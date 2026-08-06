@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { computeRatingSummary } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
+import { sendVerificationCode, isDevBypassCode } from "../services/sms";
 
 const router = Router();
 router.use(requireAuth);
@@ -88,6 +89,114 @@ router.put("/me", async (req, res) => {
   });
 
   res.json(serializePrivateProfile(updated, await computeRatingSummary(updated.id)));
+});
+
+// ---- Mobile number change (10.6) - never creates a new account or affects
+// ratings, history or active groups; just updates the phone on this row. ----
+
+const CODE_TTL_MINUTES = 10;
+
+const changePhoneRequestSchema = z.object({ newPhone: z.string().min(6, "Enter a valid mobile number.") });
+
+router.post("/me/change-phone/request", async (req, res) => {
+  const parsed = changePhoneRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { newPhone } = parsed.data;
+
+  const existing = await prisma.user.findUnique({ where: { phone: newPhone } });
+  if (existing) return res.status(400).json({ error: "That number is already in use by another account." });
+
+  const code = await sendVerificationCode(newPhone);
+  await prisma.phoneVerification.create({
+    data: { phone: newPhone, code, expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000) },
+  });
+
+  res.json({ ok: true });
+});
+
+const changePhoneConfirmSchema = z.object({ newPhone: z.string().min(6), code: z.string().min(4) });
+
+router.post("/me/change-phone/confirm", async (req, res) => {
+  const parsed = changePhoneConfirmSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { newPhone, code } = parsed.data;
+
+  if (!isDevBypassCode(code)) {
+    const verification = await prisma.phoneVerification.findFirst({
+      where: { phone: newPhone, code, consumedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!verification) return res.status(400).json({ error: "That code is incorrect or has expired." });
+    await prisma.phoneVerification.update({ where: { id: verification.id }, data: { consumedAt: new Date() } });
+  }
+
+  const existing = await prisma.user.findUnique({ where: { phone: newPhone } });
+  if (existing) return res.status(400).json({ error: "That number is already in use by another account." });
+
+  const updated = await prisma.user.update({ where: { id: req.userId }, data: { phone: newPhone } });
+  res.json({ phone: updated.phone });
+});
+
+// ---- Account deletion (10.8) - deferred while the user has active group
+// commitments; otherwise anonymised immediately. The row itself is kept so
+// historical ratings and completed groups still reference a valid user. ----
+
+async function activeCommitmentGroups(userId: string) {
+  const memberships = await prisma.groupMember.findMany({
+    where: { userId, status: "ACTIVE", group: { state: { notIn: ["DISBANDED"] } } },
+    include: { group: true },
+  });
+  const pendingApplications = await prisma.groupApplication.findMany({
+    where: { applicantId: userId, status: "PENDING" },
+    include: { group: true },
+  });
+  const names = new Set<string>();
+  memberships.forEach((m) => names.add(m.group.name));
+  pendingApplications.forEach((a) => names.add(a.group.name));
+  return [...names];
+}
+
+router.post("/me/delete-request", async (req, res) => {
+  const blocking = await activeCommitmentGroups(req.userId!);
+
+  if (blocking.length > 0) {
+    await prisma.user.update({ where: { id: req.userId }, data: { status: "PENDING_DELETION" } });
+    return res.json({
+      deferred: true,
+      message: "Deletion is deferred until your active group commitments finish. Leave or complete them, then request deletion again.",
+      blockingGroups: blocking,
+    });
+  }
+
+  await prisma.$transaction([
+    prisma.userSkill.deleteMany({ where: { userId: req.userId } }),
+    prisma.userTool.deleteMany({ where: { userId: req.userId } }),
+    prisma.userDietary.deleteMany({ where: { userId: req.userId } }),
+    prisma.userPhoto.deleteMany({ where: { userId: req.userId } }),
+    prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        phone: `deleted-${req.userId}`,
+        firstName: null,
+        age: null,
+        gender: null,
+        locationLabel: null,
+        locationLat: null,
+        locationLng: null,
+        homeAddress: null,
+        bio: null,
+        profilePhotoUrl: null,
+        status: "DELETED",
+      },
+    }),
+  ]);
+
+  res.json({ deferred: false, message: "Your account has been deleted." });
+});
+
+router.post("/me/cancel-deletion", async (req, res) => {
+  await prisma.user.update({ where: { id: req.userId }, data: { status: "ACTIVE" } });
+  res.json({ ok: true });
 });
 
 // ---- Skills (2.6) ----

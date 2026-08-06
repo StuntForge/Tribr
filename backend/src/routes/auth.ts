@@ -93,6 +93,9 @@ router.post("/verify-code", async (req, res) => {
   if (user.status === "BANNED" || user.status === "SUSPENDED") {
     return res.status(403).json({ error: "This account has been suspended." });
   }
+  if (user.status === "DELETED") {
+    return res.status(403).json({ error: "This account has been deleted." });
+  }
 
   const token = signToken({ userId: user.id });
   res.json({

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { rateHost } from "../../api/groups";
 import { colors, spacing } from "../../theme";
@@ -16,7 +16,7 @@ export default function RateHostScreen({ route, navigation }: any) {
     mutationFn: () => rateHost(groupId, taskId, hosting, accuracy, attitude),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      navigation.goBack();
+      Alert.alert("Thanks!", "Your rating stays hidden until the cycle ends.", [{ text: "OK", onPress: () => navigation.goBack() }]);
     },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });

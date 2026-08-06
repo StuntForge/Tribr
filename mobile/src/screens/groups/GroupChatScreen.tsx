@@ -69,14 +69,25 @@ export default function GroupChatScreen({ route }: any) {
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.listContent}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>No messages yet. Say hello, or wait for the group leader to get things moving.</Text>
+          </View>
+        }
         renderItem={({ item }) => <MessageBubble message={item} isMine={item.senderId === profile?.id} />}
       />
       <View style={styles.inputRow}>
-        <TouchableOpacity style={styles.photoButton} onPress={onAddPhoto}>
+        <TouchableOpacity style={styles.photoButton} onPress={onAddPhoto} accessibilityLabel="Attach a photo" accessibilityRole="button">
           <Text style={styles.photoButtonText}>📷</Text>
         </TouchableOpacity>
-        <TextInput style={styles.input} value={text} onChangeText={setText} placeholder="Message the group" />
-        <TouchableOpacity style={styles.sendButton} onPress={onSend} disabled={!text.trim()}>
+        <TextInput
+          style={styles.input}
+          value={text}
+          onChangeText={setText}
+          placeholder="Message the group"
+          accessibilityLabel="Message the group"
+        />
+        <TouchableOpacity style={styles.sendButton} onPress={onSend} disabled={!text.trim()} accessibilityRole="button">
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
@@ -106,7 +117,9 @@ function MessageBubble({ message, isMine }: { message: ChatMessage; isMine: bool
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  listContent: { padding: spacing.lg, paddingBottom: spacing.md },
+  listContent: { padding: spacing.lg, paddingBottom: spacing.md, flexGrow: 1 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
+  emptyText: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
   systemBubble: { alignSelf: "center", backgroundColor: colors.border, borderRadius: 12, paddingVertical: 4, paddingHorizontal: spacing.md, marginVertical: spacing.xs },
   systemText: { fontSize: 11, color: colors.textMuted, textAlign: "center" },
   bubbleRow: { flexDirection: "row", marginVertical: spacing.xs },

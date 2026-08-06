@@ -135,6 +135,23 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         ))}
       </Section>
 
+      {group.progress && group.progress.total > 0 && (group.state === "WORKING" || group.state === "COMPLETED") && (
+        <Section title="Cycle progress">
+          <View style={styles.progressBarTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: group.progress.total, now: group.progress.completed }}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${Math.round(((group.progress.completed + group.progress.forgone) / group.progress.total) * 100)}%` },
+              ]}
+            />
+          </View>
+          <Text style={styles.hint}>
+            {group.progress.completed} of {group.progress.total} task{group.progress.total === 1 ? "" : "s"} completed
+            {group.progress.forgone > 0 ? ` (${group.progress.forgone} forgone)` : ""}
+          </Text>
+        </Section>
+      )}
+
       {group.state === "WORKING" && group.queue.length > 0 && (
         <Section title="Task order">
           {group.queue.map((q, i) => (
@@ -359,6 +376,8 @@ const styles = StyleSheet.create({
   queueRowActive: { backgroundColor: "#EAF4EE", borderRadius: 8, paddingHorizontal: spacing.sm },
   queuePosition: { fontSize: 14, fontWeight: "700", color: colors.textMuted, width: 20 },
   hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm },
+  progressBarTrack: { height: 10, borderRadius: 5, backgroundColor: colors.border, overflow: "hidden", marginBottom: spacing.xs },
+  progressBarFill: { height: "100%", backgroundColor: colors.primary, borderRadius: 5 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.sm },
   chip: {
     borderWidth: 1,

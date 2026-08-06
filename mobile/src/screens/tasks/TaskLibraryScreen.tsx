@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { getMyTasks, Task, TaskStatus } from "../../api/tasks";
@@ -30,9 +30,11 @@ const STATUS_COLOR: Record<TaskStatus, string> = {
 export default function TaskLibraryScreen({ navigation }: any) {
   const { profile } = useAuth();
   const { data: tasks, isLoading, refetch, isRefetching } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks });
+  const [showArchived, setShowArchived] = useState(false);
 
   const limit = profile?.subscriptionTier === "SUBSCRIBER" ? 20 : 1;
-  const activeCount = tasks?.filter((t) => t.status !== "ARCHIVED").length ?? 0;
+  const activeTasks = tasks?.filter((t) => t.status !== "ARCHIVED") ?? [];
+  const archivedTasks = tasks?.filter((t) => t.status === "ARCHIVED") ?? [];
 
   if (isLoading) {
     return (
@@ -47,42 +49,71 @@ export default function TaskLibraryScreen({ navigation }: any) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Tasks</Text>
         <Text style={styles.headerSubtitle}>
-          {activeCount} of {limit} active task{limit === 1 ? "" : "s"} used
+          {activeTasks.length} of {limit} active task{limit === 1 ? "" : "s"} used
           {profile?.subscriptionTier !== "SUBSCRIBER" ? " (Free plan)" : ""}
         </Text>
       </View>
 
       <FlatList
-        data={tasks}
+        data={showArchived ? archivedTasks : activeTasks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshing={isRefetching}
         onRefresh={refetch}
+        ListHeaderComponent={
+          archivedTasks.length > 0 ? (
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() => setShowArchived((v) => !v)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.toggleText}>
+                {showArchived ? "← Back to active tasks" : `View ${archivedTasks.length} completed task${archivedTasks.length === 1 ? "" : "s"} →`}
+              </Text>
+            </TouchableOpacity>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>You haven't added a task yet</Text>
-            <Text style={styles.emptyBody}>
-              Add a DIY, gardening or decorating project you'd like help with. This is the task you'll offer in
-              exchange for helping other members with theirs.
-            </Text>
+            {showArchived ? (
+              <Text style={styles.emptyBody}>No completed tasks yet.</Text>
+            ) : (
+              <>
+                <Text style={styles.emptyTitle}>You haven't added a task yet</Text>
+                <Text style={styles.emptyBody}>
+                  Add a DIY, gardening or decorating project you'd like help with. This is the task you'll offer in
+                  exchange for helping other members with theirs.
+                </Text>
+              </>
+            )}
           </View>
         }
-        renderItem={({ item }) => <TaskCard task={item} onPress={() => navigation.navigate("CreateEditTask", { taskId: item.id })} />}
+        renderItem={({ item }) => (
+          <TaskCard
+            task={item}
+            onPress={() => (showArchived ? undefined : navigation.navigate("CreateEditTask", { taskId: item.id }))}
+            disabled={showArchived}
+          />
+        )}
       />
 
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => navigation.navigate("CreateEditTask", {})}
-      >
-        <Text style={styles.addButtonText}>+ Add a task</Text>
-      </TouchableOpacity>
+      {!showArchived && (
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => navigation.navigate("CreateEditTask", {})}
+          accessibilityRole="button"
+          accessibilityLabel="Add a task"
+        >
+          <Text style={styles.addButtonText}>+ Add a task</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
-function TaskCard({ task, onPress }: { task: Task; onPress: () => void }) {
+function TaskCard({ task, onPress, disabled }: { task: Task; onPress: () => void; disabled?: boolean }) {
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress}>
+    <TouchableOpacity style={styles.card} onPress={onPress} disabled={disabled} accessibilityRole="button">
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{task.name}</Text>
         <View style={[styles.badge, { borderColor: STATUS_COLOR[task.status] }]}>
@@ -104,6 +135,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: "700", color: colors.text },
   headerSubtitle: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 100, flexGrow: 1 },
+  toggleRow: { alignItems: "center", paddingVertical: spacing.sm, marginBottom: spacing.sm },
+  toggleText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },

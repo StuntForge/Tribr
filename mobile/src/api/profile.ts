@@ -97,3 +97,29 @@ export function blockUser(userId: string) {
 export function reportUser(userId: string, reason: string, details?: string) {
   return apiFetch<{ id: string }>(`/api/users/${userId}/report`, { method: "POST", body: { reason, details } });
 }
+
+// ---- Mobile number change (10.6) ----
+
+export function requestPhoneChange(newPhone: string) {
+  return apiFetch<{ ok: true }>("/api/me/change-phone/request", { method: "POST", body: { newPhone } });
+}
+
+export function confirmPhoneChange(newPhone: string, code: string) {
+  return apiFetch<{ phone: string }>("/api/me/change-phone/confirm", { method: "POST", body: { newPhone, code } });
+}
+
+// ---- Account deletion (10.8) ----
+
+export interface DeleteAccountResult {
+  deferred: boolean;
+  message: string;
+  blockingGroups?: string[];
+}
+
+export function requestAccountDeletion() {
+  return apiFetch<DeleteAccountResult>("/api/me/delete-request", { method: "POST" });
+}
+
+export function cancelAccountDeletion() {
+  return apiFetch<{ ok: true }>("/api/me/cancel-deletion", { method: "POST" });
+}

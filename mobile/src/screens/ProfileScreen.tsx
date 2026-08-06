@@ -171,6 +171,10 @@ export default function ProfileScreen({ navigation }: any) {
 
       {busy && <ActivityIndicator style={{ marginTop: spacing.md }} />}
 
+      <TouchableOpacity style={styles.taskLibraryButton} onPress={() => navigation.navigate("AccountSettings")}>
+        <Text style={styles.taskLibraryButtonText}>Account settings</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.signOutButton} onPress={confirmSignOut}>
         <Text style={styles.signOutText}>Sign out</Text>
       </TouchableOpacity>

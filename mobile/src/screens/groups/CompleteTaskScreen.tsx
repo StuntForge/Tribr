@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AttendanceEntry, AttendanceStatus, completeTask, getAttendees } from "../../api/groups";
 import { colors, spacing } from "../../theme";
@@ -33,7 +33,9 @@ export default function CompleteTaskScreen({ route, navigation }: any) {
       queryClient.invalidateQueries({ queryKey: ["group", groupId] });
       queryClient.invalidateQueries({ queryKey: ["my-groups"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      navigation.goBack();
+      Alert.alert("Task completed", `"${taskName}" is marked complete. Ratings stay hidden until the cycle ends.`, [
+        { text: "OK", onPress: () => navigation.goBack() },
+      ]);
     },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });

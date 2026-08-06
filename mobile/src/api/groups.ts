@@ -64,6 +64,7 @@ export interface GroupDetail {
   pendingApplicationCount?: number;
   members: GroupMemberInfo[];
   queue: QueueEntry[];
+  progress: { completed: number; forgone: number; total: number } | null;
   dissolutionVote: { id: string; startedAt: string; endsAt: string; outcome: string | null } | null;
 }
 

@@ -13,6 +13,54 @@ async function requireGroupMember(groupId: string, userId: string) {
   return Boolean(member && member.status === "ACTIVE");
 }
 
+// 9.3 - Home screen data: active commitments prioritised over discovery.
+router.get("/me/home-summary", async (req, res) => {
+  const memberships = await prisma.groupMember.findMany({
+    where: { userId: req.userId, status: "ACTIVE", group: { state: { notIn: ["DISBANDED"] } } },
+    include: { group: true },
+  });
+
+  const activeGroups = memberships.map((m) => ({
+    id: m.group.id,
+    name: m.group.name,
+    state: m.group.state,
+    isLeader: m.isLeader,
+    cycleNumber: m.group.currentCycleNumber,
+  }));
+
+  const pendingApplicationsToReview = await prisma.groupApplication.count({
+    where: { status: "PENDING", group: { leaderId: req.userId, id: { in: memberships.map((m) => m.groupId) } } },
+  });
+
+  const groupIds = memberships.map((m) => m.groupId);
+  const workDays = await prisma.workDay.findMany({
+    where: { task: { groupId: { in: groupIds } }, confirmedDate: { gte: new Date() } },
+    include: { task: { include: { group: true } } },
+    orderBy: { confirmedDate: "asc" },
+  });
+
+  const upcoming = [];
+  for (const wd of workDays) {
+    const isOwner = wd.task.ownerId === req.userId;
+    const available = await prisma.availabilityResponse.findFirst({
+      where: { userId: req.userId, available: true, dateOption: { proposal: { taskId: wd.taskId }, date: wd.confirmedDate } },
+    });
+    if (!isOwner && !available) continue;
+    upcoming.push({
+      groupId: wd.task.groupId,
+      groupName: wd.task.group?.name ?? "",
+      taskId: wd.taskId,
+      taskName: wd.task.name,
+      confirmedDate: wd.confirmedDate,
+      allDay: wd.allDay,
+      startTime: wd.startTime,
+      endTime: wd.endTime,
+    });
+  }
+
+  res.json({ activeGroups, pendingApplicationsToReview, upcomingWorkDays: upcoming });
+});
+
 // 6.3 - who the task owner needs to rate: members who confirmed availability
 // for the confirmed date, excluding the owner themselves.
 router.get("/groups/:id/tasks/:taskId/attendees", async (req, res) => {

@@ -149,6 +149,15 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
 
   const activeMemberCount = group.members.length;
 
+  // 9.5 - visual progress through the current cycle.
+  const progress = cycle
+    ? {
+        completed: cycleTasks.filter((t) => t.status === "ARCHIVED").length,
+        forgone: cycleTasks.filter((t) => t.status === "FORGONE").length,
+        total: cycleTasks.length,
+      }
+    : null;
+
   return {
     id: group.id,
     name: group.name,
@@ -195,6 +204,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
               isActive: index === 0,
             }))
         : [],
+    progress,
     dissolutionVote: dissolutionVote
       ? {
           id: dissolutionVote.id,

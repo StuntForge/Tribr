@@ -26,6 +26,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (user.status === "BANNED" || user.status === "SUSPENDED") {
       return res.status(403).json({ error: "This account has been suspended." });
     }
+    if (user.status === "DELETED") {
+      return res.status(403).json({ error: "This account has been deleted." });
+    }
     req.userId = user.id;
     next();
   } catch {
