@@ -1,0 +1,466 @@
+// Project Exchange - data model
+// Local dev uses SQLite (zero setup). Swap the datasource to postgresql for production.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Users & Profiles (Chapter 2) ----------
+
+model User {
+  id                String    @id @default(cuid())
+  phone             String    @unique
+  phoneVerifiedAt   DateTime?
+  acceptedTermsAt   DateTime?
+
+  firstName         String?
+  age               Int?
+  gender            String?
+  locationLabel     String?
+  locationLat       Float?
+  locationLng       Float?
+  bio               String?
+  profilePhotoUrl   String?
+  profileComplete   Boolean   @default(false)
+
+  subscriptionTier  String    @default("FREE") // FREE | SUBSCRIBER
+  status            String    @default("ACTIVE") // ACTIVE | SUSPENDED | BANNED | PENDING_DELETION
+
+  // hidden reputation seed so new accounts aren't volatile (2.10, 6.11)
+  workerSeedApplied Boolean   @default(true)
+  hostSeedApplied   Boolean   @default(true)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  photos            UserPhoto[]
+  skills            UserSkill[]
+  tools             UserTool[]
+  dietary           UserDietary[]
+  tasks             Task[]
+  ledGroups         Group[]              @relation("GroupLeader")
+  memberships       GroupMember[]
+  applications      GroupApplication[]
+  invitationsRecv   GroupInvitation[]    @relation("InvitedUser")
+  ratingsGiven      RatingEvent[]        @relation("Rater")
+  ratingsReceived   RatingEvent[]        @relation("Ratee")
+  notifications     Notification[]
+  chatMessages      GroupChatMessage[]
+  blocksMade        Block[]              @relation("Blocker")
+  blocksReceived    Block[]              @relation("Blocked")
+  reportsMade       Report[]             @relation("Reporter")
+  reportsReceived   Report[]             @relation("ReportedUser")
+  favouritesMade    Favourite[]          @relation("FavouriteOwner")
+  favouritedBy      Favourite[]          @relation("FavouriteTarget")
+  subscription      Subscription?
+  dissolutionBallots DissolutionBallot[]
+  availabilityResponses AvailabilityResponse[]
+}
+
+model UserPhoto {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url       String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model UserSkill {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label  String
+
+  @@index([userId])
+}
+
+model UserTool {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label  String
+
+  @@index([userId])
+}
+
+model UserDietary {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   String // Vegetarian | Vegan | Gluten Free | Dairy Free | Nut Allergy | Other
+
+  @@index([userId])
+}
+
+model PhoneVerification {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
+// ---------- Job Categories (3.3, admin-manageable) ----------
+
+model JobCategory {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  active    Boolean @default(true)
+  tasks     Task[]
+  groups    Group[]
+}
+
+// ---------- Personal Task System (Chapter 3) ----------
+
+model Task {
+  id                 String   @id @default(cuid())
+  ownerId            String
+  owner              User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name               String
+  categoryId         String
+  category           JobCategory @relation(fields: [categoryId], references: [id])
+  description        String
+  estimatedManHours  Float
+  locationType       String   // HOME | CHOOSE
+  locationLabel      String?
+  locationLat        Float?
+  locationLng        Float?
+  exactAddress       String?  // never exposed publicly; revealed only after confirmed work day (3.5, 5.6)
+  notes              String?
+
+  status             String   @default("AVAILABLE") // DRAFT|AVAILABLE|SUBMITTED|APPROVED|ACTIVE|COMPLETED|ARCHIVED
+
+  groupId            String?
+  group              Group?   @relation(fields: [groupId], references: [id])
+  cycleId            String?
+  cycle              GroupCycle? @relation(fields: [cycleId], references: [id])
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  photos             TaskPhoto[]
+  applications       GroupApplication[]
+  invitations        GroupInvitation[]
+  availabilityProposals AvailabilityProposal[]
+  workDay            WorkDay?
+  ratingEvents       RatingEvent[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model TaskPhoto {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  url    String
+}
+
+// ---------- Groups & Lifecycle (Chapter 4) ----------
+
+model Group {
+  id                String   @id @default(cuid())
+  name              String
+  description       String
+  categoryId        String?
+  category          JobCategory? @relation(fields: [categoryId], references: [id])
+  locationLabel     String?
+  locationLat       Float?
+  locationLng       Float?
+  preferredAgeMin   Int?
+  preferredAgeMax   Int?
+  preferredGender   String?
+  durationBand      String?
+  sizeMin           Int
+  sizeMax           Int
+
+  leaderId          String
+  leader            User     @relation("GroupLeader", fields: [leaderId], references: [id])
+
+  state             String   @default("RECRUITING")
+  // RECRUITING | READY | WORKING | COMPLETED | DISSOLUTION | DISBANDED
+
+  currentCycleNumber Int     @default(1)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  members           GroupMember[]
+  applications      GroupApplication[]
+  invitations       GroupInvitation[]
+  tasks             Task[]
+  cycles            GroupCycle[]
+  chatMessages      GroupChatMessage[]
+  dissolutionVotes  DissolutionVote[]
+
+  @@index([state])
+}
+
+model GroupCycle {
+  id            String    @id @default(cuid())
+  groupId       String
+  group         Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  cycleNumber   Int
+  startedAt     DateTime?
+  completedAt   DateTime?
+  taskOrder     String? // JSON array of taskIds, server-computed default order (4.9)
+
+  tasks         Task[]
+
+  @@index([groupId])
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isLeader  Boolean  @default(false)
+  status    String   @default("ACTIVE") // ACTIVE | LEFT
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+}
+
+model GroupApplication {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  applicantId String
+  applicant   User     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id])
+  message     String?
+
+  status      String   @default("PENDING")
+  // PENDING | APPROVED | REJECTED | TASK_SUGGESTED | TASK_REQUESTED
+  rejectionReason String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([applicantId])
+}
+
+model GroupInvitation {
+  id               String   @id @default(cuid())
+  groupId          String
+  group            Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  invitedUserId    String
+  invitedUser      User     @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  suggestedTaskId  String?
+  suggestedTask    Task?    @relation(fields: [suggestedTaskId], references: [id])
+
+  status           String   @default("PENDING") // PENDING | ACCEPTED | DECLINED
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([invitedUserId])
+}
+
+// ---------- Scheduling (Chapter 5) ----------
+
+model AvailabilityProposal {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  options   DateOption[]
+}
+
+model DateOption {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    AvailabilityProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  date        DateTime
+  allDay      Boolean  @default(true)
+  startTime   String?
+  endTime     String?
+
+  responses   AvailabilityResponse[]
+}
+
+model AvailabilityResponse {
+  id           String   @id @default(cuid())
+  dateOptionId String
+  dateOption   DateOption @relation(fields: [dateOptionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  available    Boolean
+
+  @@unique([dateOptionId, userId])
+}
+
+model WorkDay {
+  id              String   @id @default(cuid())
+  taskId          String   @unique
+  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  confirmedDate   DateTime
+  allDay          Boolean  @default(true)
+  startTime       String?
+  endTime         String?
+  foodProvided    Boolean  @default(false)
+  addressRevealed Boolean  @default(true)
+  createdAt       DateTime @default(now())
+}
+
+// ---------- Group Chat ----------
+
+model GroupChatMessage {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderId  String?
+  sender    User?    @relation(fields: [senderId], references: [id])
+  isSystem  Boolean  @default(false)
+  text      String?
+  photoUrl  String?
+  createdAt DateTime @default(now())
+
+  @@index([groupId])
+}
+
+// ---------- Dissolution (4.14) ----------
+
+model DissolutionVote {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  requestedBy String
+  startedAt   DateTime @default(now())
+  endsAt      DateTime
+  outcome     String?  // PASSED | FAILED
+  resolvedAt  DateTime?
+
+  ballots     DissolutionBallot[]
+
+  @@index([groupId])
+}
+
+model DissolutionBallot {
+  id      String   @id @default(cuid())
+  voteId  String
+  vote    DissolutionVote @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User     @relation(fields: [userId], references: [id])
+  choice  String   // YES | NO
+
+  @@unique([voteId, userId])
+}
+
+// ---------- Ratings & Reputation (Chapter 6) ----------
+
+model RatingEvent {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  raterId     String
+  rater       User     @relation("Rater", fields: [raterId], references: [id])
+  rateeId     String
+  ratee       User     @relation("Ratee", fields: [rateeId], references: [id])
+
+  type        String   // WORKER | HOST
+  scoreA      Int      // Worker: Performance   | Host: Hosting
+  scoreB      Int      // Worker: Attitude      | Host: Accuracy of Task
+  scoreC      Int      // Worker: Reliability   | Host: Attitude
+  isNoShow    Boolean  @default(false)   // 6.6 hidden 1/5
+  isValidAbsence Boolean @default(false) // 6.6 hidden neutral 3/5
+
+  visible     Boolean  @default(false)  // becomes true when group ends/dissolves (6.7)
+  createdAt   DateTime @default(now())
+
+  @@index([rateeId])
+  @@index([taskId])
+}
+
+// ---------- Notifications (Chapter 8) ----------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  payload   String?  // JSON blob
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------- Blocking, Reporting, Favourites ----------
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+}
+
+model Report {
+  id               String   @id @default(cuid())
+  reporterId       String
+  reporter         User     @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUserId   String?
+  reportedUser     User?    @relation("ReportedUser", fields: [reportedUserId], references: [id])
+  reportedGroupId  String?
+  reason           String
+  details          String?
+  status           String   @default("OPEN") // OPEN | REVIEWING | RESOLVED | DISMISSED
+  createdAt        DateTime @default(now())
+}
+
+model Favourite {
+  id               String @id @default(cuid())
+  ownerId          String
+  owner            User   @relation("FavouriteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  favouriteUserId  String
+  favouriteUser    User   @relation("FavouriteTarget", fields: [favouriteUserId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+
+  @@unique([ownerId, favouriteUserId])
+}
+
+// ---------- Subscriptions (8.5-8.7) ----------
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String   @default("INACTIVE") // ACTIVE | INACTIVE | CANCELED | PAST_DUE
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// ---------- Admin (8.9) ----------
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("ADMIN") // ADMIN | SUPPORT
+  createdAt    DateTime @default(now())
+}
