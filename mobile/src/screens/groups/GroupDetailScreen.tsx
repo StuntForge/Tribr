@@ -9,6 +9,8 @@ import {
   disbandGroup,
   forgoTask,
   getGroup,
+  getPreviousMembers,
+  inviteMember,
   leaveGroup,
   requestDissolution,
   startWork,
@@ -103,14 +105,33 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         </TouchableOpacity>
       )}
 
+      {group.isLeader && ["RECRUITING", "READY"].includes(group.state) && (
+        <Section title="Recruit">
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.secondaryButtonSmall}
+              onPress={() => navigation.navigate("SearchMembers", { groupIdToInviteTo: groupId })}
+            >
+              <Text style={styles.secondaryButtonText}>Find & invite members</Text>
+            </TouchableOpacity>
+          </View>
+          <PreviousMembersQuickInvite groupId={groupId} />
+        </Section>
+      )}
+
       <Section title="Members">
         {group.members.map((m) => (
-          <View key={m.userId} style={styles.memberRow}>
+          <TouchableOpacity
+            key={m.userId}
+            style={styles.memberRow}
+            onPress={() => navigation.navigate("PublicProfile", { userId: m.userId })}
+            disabled={m.userId === profile?.id}
+          >
             <Text style={styles.memberName}>
               {m.firstName} {m.isLeader ? "👑" : ""}
             </Text>
             <Text style={styles.memberTask}>{m.currentTask ? `${m.currentTask.name} · ${m.currentTask.status}` : "No task this cycle"}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </Section>
 
@@ -266,6 +287,32 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         )}
       </Section>
     </ScrollView>
+  );
+}
+
+// 7.10 - previous members of this group are easy to invite back before recruiting strangers.
+function PreviousMembersQuickInvite({ groupId }: { groupId: string }) {
+  const queryClient = useQueryClient();
+  const { data: previousMembers } = useQuery({ queryKey: ["previous-members", groupId], queryFn: () => getPreviousMembers(groupId) });
+
+  const inviteMutation = useMutation({
+    mutationFn: (userId: string) => inviteMember(groupId, userId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["previous-members", groupId] }),
+  });
+
+  if (!previousMembers || previousMembers.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: spacing.md }}>
+      <Text style={styles.hint}>Previous members of this group:</Text>
+      <View style={styles.actionRow}>
+        {previousMembers.map((m) => (
+          <TouchableOpacity key={m.userId} style={styles.secondaryButtonSmall} onPress={() => inviteMutation.mutate(m.userId)}>
+            <Text style={styles.secondaryButtonText}>+ {m.firstName}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
   );
 }
 

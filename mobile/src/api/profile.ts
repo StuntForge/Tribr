@@ -68,3 +68,32 @@ export function setDietary(types: string[]) {
 export function toggleSubscriptionDev() {
   return apiFetch<{ subscriptionTier: "FREE" | "SUBSCRIBER" }>("/api/dev/toggle-subscription", { method: "POST" });
 }
+
+export interface PublicProfile {
+  id: string;
+  firstName: string | null;
+  age: number | null;
+  gender: string | null;
+  approxDistanceMiles: number | null;
+  bio: string | null;
+  profilePhotoUrl: string | null;
+  photos: { id: string; url: string }[];
+  skills: string[];
+  tools: string[];
+  overallRating: number | null;
+  workerRating: number | null;
+  hostRating: number | null;
+  completedCycles: number;
+}
+
+export function getPublicProfile(userId: string) {
+  return apiFetch<PublicProfile>(`/api/users/${userId}`);
+}
+
+export function blockUser(userId: string) {
+  return apiFetch<{ ok: true }>(`/api/users/${userId}/block`, { method: "POST" });
+}
+
+export function reportUser(userId: string, reason: string, details?: string) {
+  return apiFetch<{ id: string }>(`/api/users/${userId}/report`, { method: "POST", body: { reason, details } });
+}

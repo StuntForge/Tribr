@@ -3,7 +3,8 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
-import { revealCycleRatings } from "../services/ratings";
+import { computeRatingSummary, revealCycleRatings } from "../services/ratings";
+import { haversineMiles } from "../services/geo";
 
 const router = Router();
 router.use(requireAuth);
@@ -176,7 +177,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
         isLeader: m.isLeader,
         joinedAt: m.joinedAt,
         currentTask: task
-          ? { id: task.id, name: task.name, status: task.status, category: task.category.name }
+          ? { id: task.id, name: task.name, status: task.status, category: task.category.name, estimatedManHours: task.estimatedManHours }
           : null,
       };
     }),
@@ -226,28 +227,72 @@ router.get("/groups/mine", async (req, res) => {
   );
 });
 
+// 7.3/7.4 - browse recruiting groups. Free members may filter by distance
+// only; the other filters are silently ignored for them rather than erroring,
+// since the mobile UI simply won't offer those controls to a free account.
 router.get("/groups/browse", async (req, res) => {
+  const viewer = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+  const isSubscriber = viewer.subscriptionTier === "SUBSCRIBER";
+
+  const blockedPairs = await prisma.block.findMany({
+    where: { OR: [{ blockerId: req.userId }, { blockedId: req.userId }] },
+  });
+  const blockedUserIds = new Set(blockedPairs.flatMap((b) => [b.blockerId, b.blockedId]).filter((id) => id !== req.userId));
+
+  const categoryId = isSubscriber && typeof req.query.categoryId === "string" ? req.query.categoryId : undefined;
+  const minRating = isSubscriber && typeof req.query.minRating === "string" ? Number(req.query.minRating) : undefined;
+  const sizeMin = isSubscriber && typeof req.query.sizeMin === "string" ? Number(req.query.sizeMin) : undefined;
+  const sizeMax = isSubscriber && typeof req.query.sizeMax === "string" ? Number(req.query.sizeMax) : undefined;
+  const maxDistanceMiles = typeof req.query.maxDistanceMiles === "string" ? Number(req.query.maxDistanceMiles) : undefined;
+
   const groups = await prisma.group.findMany({
-    where: { state: { in: ["RECRUITING", "READY"] } },
-    include: { category: true, leader: true, members: { where: { status: "ACTIVE" } } },
+    where: {
+      state: { in: ["RECRUITING", "READY"] },
+      leaderId: { notIn: [...blockedUserIds] },
+      ...(categoryId ? { categoryId } : {}),
+      ...(sizeMin != null ? { sizeMax: { gte: sizeMin } } : {}),
+      ...(sizeMax != null ? { sizeMin: { lte: sizeMax } } : {}),
+    },
+    include: { category: true, leader: true, members: { where: { status: "ACTIVE" }, include: { user: true } } },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
 
-  res.json(
-    groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      description: g.description,
-      category: g.category ? g.category.name : null,
-      locationLabel: g.locationLabel,
-      sizeMin: g.sizeMin,
-      sizeMax: g.sizeMax,
-      memberCount: g.members.length,
-      leaderName: g.leader.firstName,
-      state: g.state,
-    }))
+  const results = await Promise.all(
+    groups.map(async (g) => {
+      let approxDistanceMiles: number | null = null;
+      if (viewer.locationLat != null && viewer.locationLng != null && g.locationLat != null && g.locationLng != null) {
+        approxDistanceMiles = Math.round(haversineMiles(viewer.locationLat, viewer.locationLng, g.locationLat, g.locationLng) * 10) / 10;
+      }
+
+      const memberRatings = await Promise.all(g.members.map(async (m) => (await computeRatingSummary(m.userId)).overallRating));
+      const rated = memberRatings.filter((r): r is number => r != null);
+      const averageMemberRating = rated.length > 0 ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+
+      return {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        category: g.category ? g.category.name : null,
+        locationLabel: g.locationLabel,
+        approxDistanceMiles,
+        sizeMin: g.sizeMin,
+        sizeMax: g.sizeMax,
+        memberCount: g.members.length,
+        leaderName: g.leader.firstName,
+        averageMemberRating,
+        state: g.state,
+      };
+    })
   );
+
+  const filtered = results.filter((r) => {
+    if (maxDistanceMiles != null && (r.approxDistanceMiles == null || r.approxDistanceMiles > maxDistanceMiles)) return false;
+    if (minRating != null && (r.averageMemberRating == null || r.averageMemberRating < minRating)) return false;
+    return true;
+  });
+
+  res.json(filtered);
 });
 
 router.get("/groups/:id", async (req, res) => {
@@ -572,6 +617,165 @@ router.post("/groups/:id/applications/:appId/respond-to-suggestion", async (req,
     prisma.task.update({ where: { id: task.id }, data: { status: "SUBMITTED", groupId: group.id, cycleId: cycle.id } }),
     prisma.groupApplication.update({ where: { id: application.id }, data: { status: "PENDING", taskId: task.id, suggestedTaskId: null } }),
   ]);
+
+  res.json({ ok: true });
+});
+
+// ---------- Invitations (7.8) ----------
+
+// 7.10 - members who've left this group before, easy to invite back for a new cycle.
+router.get("/groups/:id/previous-members", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+  if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can view this." });
+
+  const previous = await prisma.groupMember.findMany({
+    where: { groupId: group.id, status: "LEFT" },
+    include: { user: true },
+    orderBy: { leftAt: "desc" },
+  });
+
+  res.json(previous.map((m) => ({ userId: m.userId, firstName: m.user.firstName })));
+});
+
+router.get("/groups/:id/invitations", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+  if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can view invitations." });
+
+  const invitations = await prisma.groupInvitation.findMany({
+    where: { groupId: group.id, status: "PENDING" },
+    include: { invitedUser: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json(invitations.map((i) => ({ id: i.id, invitedUser: { id: i.invitedUserId, firstName: i.invitedUser.firstName } })));
+});
+
+const inviteSchema = z.object({ invitedUserId: z.string().min(1), suggestedTaskId: z.string().optional() });
+
+router.post("/groups/:id/invitations", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+  if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can invite members." });
+  if (!["RECRUITING", "READY"].includes(group.state)) {
+    return res.status(400).json({ error: "This group isn't recruiting right now." });
+  }
+
+  const parsed = inviteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { invitedUserId, suggestedTaskId } = parsed.data;
+
+  // 7.11 - blocked users are excluded from invitations.
+  const blocked = await prisma.block.findFirst({
+    where: {
+      OR: [
+        { blockerId: req.userId, blockedId: invitedUserId },
+        { blockerId: invitedUserId, blockedId: req.userId },
+      ],
+    },
+  });
+  if (blocked) return res.status(403).json({ error: "You can't invite this member." });
+
+  const existingMember = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: invitedUserId } } });
+  if (existingMember?.status === "ACTIVE") return res.status(400).json({ error: "They're already a member." });
+
+  const existingInvite = await prisma.groupInvitation.findFirst({ where: { groupId: group.id, invitedUserId, status: "PENDING" } });
+  if (existingInvite) return res.status(400).json({ error: "They already have a pending invitation." });
+
+  if (suggestedTaskId) {
+    const task = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: invitedUserId, status: "AVAILABLE" } });
+    if (!task) return res.status(400).json({ error: "That task isn't available on their profile." });
+  }
+
+  const invitation = await prisma.groupInvitation.create({
+    data: { groupId: group.id, invitedUserId, suggestedTaskId },
+  });
+
+  await notifyUser(invitedUserId, "GROUP_INVITATION", "Group invitation", `You've been invited to join ${group.name}.`, {
+    groupId: group.id,
+  });
+
+  res.status(201).json({ id: invitation.id });
+});
+
+router.get("/me/invitations", async (req, res) => {
+  const invitations = await prisma.groupInvitation.findMany({
+    where: { invitedUserId: req.userId, status: "PENDING" },
+    include: { group: { include: { category: true, leader: true } }, suggestedTask: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json(
+    invitations.map((i) => ({
+      id: i.id,
+      group: { id: i.group.id, name: i.group.name, category: i.group.category?.name ?? null, leaderName: i.group.leader.firstName },
+      suggestedTask: i.suggestedTask ? { id: i.suggestedTask.id, name: i.suggestedTask.name } : null,
+    }))
+  );
+});
+
+const respondInviteSchema = z.object({ accept: z.boolean(), taskId: z.string().optional() });
+
+// 7.8 - accept (with the suggested task or any other eligible task), or decline.
+router.post("/invitations/:id/respond", async (req, res) => {
+  const invitation = await prisma.groupInvitation.findFirst({ where: { id: req.params.id, invitedUserId: req.userId, status: "PENDING" } });
+  if (!invitation) return res.status(404).json({ error: "Invitation not found." });
+
+  const parsed = respondInviteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  if (!parsed.data.accept) {
+    await prisma.groupInvitation.update({ where: { id: invitation.id }, data: { status: "DECLINED" } });
+    return res.json({ ok: true });
+  }
+
+  const taskId = parsed.data.taskId ?? invitation.suggestedTaskId;
+  if (!taskId) return res.status(400).json({ error: "Choose a task to join with." });
+
+  const group = await prisma.group.findUniqueOrThrow({ where: { id: invitation.groupId } });
+  if (!["RECRUITING", "READY"].includes(group.state)) {
+    return res.status(400).json({ error: "This group isn't recruiting right now." });
+  }
+
+  const task = await prisma.task.findFirst({ where: { id: taskId, ownerId: req.userId, status: "AVAILABLE" } });
+  if (!task) return res.status(400).json({ error: "That task isn't available." });
+
+  const existingMember = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: req.userId! } } });
+  if (!existingMember) {
+    const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+    const activeGroups = await activeMembershipCount(req.userId!);
+    if (activeGroups >= groupLimitFor(owner.subscriptionTier)) {
+      return res.status(403).json({ error: `You're already in ${activeGroups} group(s), which is your plan's limit.` });
+    }
+    const activeCount = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
+    if (activeCount >= group.sizeMax) return res.status(400).json({ error: "This group is already at its maximum size." });
+  }
+
+  const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
+  if (!cycle) return res.status(500).json({ error: "This group has no active cycle." });
+
+  await prisma.$transaction(async (tx) => {
+    if (!existingMember) {
+      await tx.groupMember.create({ data: { groupId: group.id, userId: req.userId!, status: "ACTIVE" } });
+    }
+    await tx.task.update({ where: { id: task.id }, data: { status: "APPROVED", groupId: group.id, cycleId: cycle.id } });
+    await tx.groupInvitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED" } });
+  });
+
+  if (["RECRUITING", "READY"].includes(group.state)) {
+    const approvedForCycle = await prisma.task.count({ where: { cycleId: cycle.id, status: "APPROVED" } });
+    const nextState = approvedForCycle >= group.sizeMin ? "READY" : "RECRUITING";
+    if (nextState !== group.state) {
+      await prisma.group.update({ where: { id: group.id }, data: { state: nextState } });
+    }
+  }
+
+  const inviteeName = (await prisma.user.findUnique({ where: { id: req.userId } }))?.firstName;
+  await postSystemMessage(group.id, `${inviteeName} joined with "${task.name}".`);
+  await notifyGroupMembers(group.id, "NEW_MEMBER_JOINED", "New member joined", `${inviteeName} joined ${group.name}.`, {
+    excludeUserId: req.userId,
+  });
 
   res.json({ ok: true });
 });

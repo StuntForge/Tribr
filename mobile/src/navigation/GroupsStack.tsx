@@ -9,6 +9,11 @@ import GroupChatScreen from "../screens/groups/GroupChatScreen";
 import TaskScheduleScreen from "../screens/groups/TaskScheduleScreen";
 import CompleteTaskScreen from "../screens/groups/CompleteTaskScreen";
 import RateHostScreen from "../screens/groups/RateHostScreen";
+import SearchMembersScreen from "../screens/groups/SearchMembersScreen";
+import PublicProfileScreen from "../screens/groups/PublicProfileScreen";
+import InviteToGroupScreen from "../screens/groups/InviteToGroupScreen";
+import MyInvitationsScreen from "../screens/groups/MyInvitationsScreen";
+import FavouritesScreen from "../screens/groups/FavouritesScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -24,6 +29,11 @@ export default function GroupsStack() {
       <Stack.Screen name="TaskSchedule" component={TaskScheduleScreen} options={{ title: "Schedule" }} />
       <Stack.Screen name="CompleteTask" component={CompleteTaskScreen} options={{ title: "Complete Task" }} />
       <Stack.Screen name="RateHost" component={RateHostScreen} options={{ title: "Rate the Host" }} />
+      <Stack.Screen name="SearchMembers" component={SearchMembersScreen} options={{ title: "Find Members" }} />
+      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ title: "Profile" }} />
+      <Stack.Screen name="InviteToGroup" component={InviteToGroupScreen} options={{ title: "Invite" }} />
+      <Stack.Screen name="MyInvitations" component={MyInvitationsScreen} options={{ title: "My Invitations" }} />
+      <Stack.Screen name="Favourites" component={FavouritesScreen} options={{ title: "Favourites" }} />
     </Stack.Navigator>
   );
 }

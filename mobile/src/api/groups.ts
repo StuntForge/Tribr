@@ -8,10 +8,12 @@ export interface GroupSummary {
   description: string;
   category: string | null;
   locationLabel: string | null;
+  approxDistanceMiles: number | null;
   sizeMin: number;
   sizeMax: number;
   memberCount: number;
   leaderName: string | null;
+  averageMemberRating: number | null;
   state: GroupState;
 }
 
@@ -28,7 +30,7 @@ export interface GroupMemberInfo {
   firstName: string | null;
   isLeader: boolean;
   joinedAt: string;
-  currentTask: { id: string; name: string; status: string; category: string } | null;
+  currentTask: { id: string; name: string; status: string; category: string; estimatedManHours: number } | null;
 }
 
 export interface QueueEntry {
@@ -77,8 +79,23 @@ export function getMyGroups() {
   return apiFetch<MyGroupSummary[]>("/api/groups/mine");
 }
 
-export function browseGroups() {
-  return apiFetch<GroupSummary[]>("/api/groups/browse");
+export interface BrowseGroupsFilters {
+  categoryId?: string;
+  minRating?: number;
+  sizeMin?: number;
+  sizeMax?: number;
+  maxDistanceMiles?: number;
+}
+
+export function browseGroups(filters: BrowseGroupsFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.categoryId) params.set("categoryId", filters.categoryId);
+  if (filters.minRating != null) params.set("minRating", String(filters.minRating));
+  if (filters.sizeMin != null) params.set("sizeMin", String(filters.sizeMin));
+  if (filters.sizeMax != null) params.set("sizeMax", String(filters.sizeMax));
+  if (filters.maxDistanceMiles != null) params.set("maxDistanceMiles", String(filters.maxDistanceMiles));
+  const qs = params.toString();
+  return apiFetch<GroupSummary[]>(`/api/groups/browse${qs ? `?${qs}` : ""}`);
 }
 
 export function getGroup(id: string) {
@@ -187,4 +204,36 @@ export function castDissolutionBallot(groupId: string, voteId: string, choice: "
     method: "POST",
     body: { choice },
   });
+}
+
+// ---------- Invitations (7.8) & previous members (7.10) ----------
+
+export interface PreviousMember {
+  userId: string;
+  firstName: string | null;
+}
+
+export function getPreviousMembers(groupId: string) {
+  return apiFetch<PreviousMember[]>(`/api/groups/${groupId}/previous-members`);
+}
+
+export function inviteMember(groupId: string, invitedUserId: string, suggestedTaskId?: string) {
+  return apiFetch<{ id: string }>(`/api/groups/${groupId}/invitations`, {
+    method: "POST",
+    body: { invitedUserId, suggestedTaskId },
+  });
+}
+
+export interface MyInvitation {
+  id: string;
+  group: { id: string; name: string; category: string | null; leaderName: string | null };
+  suggestedTask: { id: string; name: string } | null;
+}
+
+export function getMyInvitations() {
+  return apiFetch<MyInvitation[]>("/api/me/invitations");
+}
+
+export function respondToInvitation(invitationId: string, accept: boolean, taskId?: string) {
+  return apiFetch<{ ok: true }>(`/api/invitations/${invitationId}/respond`, { method: "POST", body: { accept, taskId } });
 }

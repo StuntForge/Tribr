@@ -11,6 +11,7 @@ import devRoutes from "./routes/dev";
 import scheduleRoutes from "./routes/schedule";
 import chatRoutes from "./routes/chat";
 import notificationRoutes from "./routes/notifications";
+import searchRoutes from "./routes/search";
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use("/api", taskRoutes);
 app.use("/api", groupRoutes);
 app.use("/api", scheduleRoutes);
 app.use("/api", chatRoutes);
+app.use("/api", searchRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/dev", devRoutes);
 app.use("/api/notifications", notificationRoutes);

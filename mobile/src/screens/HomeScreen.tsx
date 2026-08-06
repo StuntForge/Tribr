@@ -1,14 +1,29 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
+import { getMyInvitations } from "../api/groups";
 import { colors, spacing } from "../theme";
 
 export default function HomeScreen({ navigation }: any) {
   const { profile } = useAuth();
+  const { data: invitations } = useQuery({ queryKey: ["my-invitations"], queryFn: getMyInvitations });
 
   return (
     <View style={styles.container}>
       <Text style={styles.greeting}>Hi {profile?.firstName ?? "there"} 👋</Text>
+
+      {invitations && invitations.length > 0 && (
+        <TouchableOpacity
+          style={styles.inviteBanner}
+          onPress={() => navigation.navigate("Groups", { screen: "MyInvitations" })}
+        >
+          <Text style={styles.inviteBannerText}>
+            You have {invitations.length} pending group invitation{invitations.length === 1 ? "" : "s"} →
+          </Text>
+        </TouchableOpacity>
+      )}
+
       <View style={styles.card}>
         <Text style={styles.cardTitle}>You don't have any active groups yet</Text>
         <Text style={styles.cardBody}>
@@ -29,6 +44,13 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
   greeting: { fontSize: 24, fontWeight: "700", color: colors.text, marginBottom: spacing.lg },
+  inviteBanner: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  inviteBannerText: { color: "#fff", fontWeight: "600", textAlign: "center" },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,

@@ -2,10 +2,10 @@ import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
-import PlaceholderScreen from "../screens/PlaceholderScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import ProfileStack from "./ProfileStack";
 import GroupsStack from "./GroupsStack";
+import SearchStack from "./SearchStack";
 import { colors } from "../theme";
 
 const Tab = createBottomTabNavigator();
@@ -29,14 +29,7 @@ export default function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Search">
-        {() => (
-          <PlaceholderScreen
-            title="Search is coming soon"
-            body="Browsing and filtering groups and members arrives in the next milestone."
-          />
-        )}
-      </Tab.Screen>
+      <Tab.Screen name="Search" component={SearchStack} options={{ headerShown: false }} />
       <Tab.Screen name="Groups" component={GroupsStack} options={{ headerShown: false }} />
       <Tab.Screen name="Notifications" component={NotificationsScreen} />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ headerShown: false }} />
