@@ -8,6 +8,9 @@ import uploadRoutes from "./routes/uploads";
 import taskRoutes from "./routes/tasks";
 import groupRoutes from "./routes/groups";
 import devRoutes from "./routes/dev";
+import scheduleRoutes from "./routes/schedule";
+import chatRoutes from "./routes/chat";
+import notificationRoutes from "./routes/notifications";
 
 const app = express();
 
@@ -21,8 +24,11 @@ app.use("/api/auth", authRoutes);
 app.use("/api", profileRoutes);
 app.use("/api", taskRoutes);
 app.use("/api", groupRoutes);
+app.use("/api", scheduleRoutes);
+app.use("/api", chatRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/dev", devRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

@@ -9,6 +9,7 @@ export interface Profile {
   locationLabel: string | null;
   locationLat: number | null;
   locationLng: number | null;
+  homeAddress: string | null;
   bio: string | null;
   profilePhotoUrl: string | null;
   profileComplete: boolean;
@@ -34,6 +35,7 @@ export interface UpdateProfileInput {
   locationLabel?: string;
   locationLat?: number;
   locationLng?: number;
+  homeAddress?: string;
   bio?: string;
   profilePhotoUrl?: string;
 }

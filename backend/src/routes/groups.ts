@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
 
 const router = Router();
 router.use(requireAuth);
@@ -28,11 +29,11 @@ function computeDefaultOrder<T extends { userId: string; joinedAt: Date }>(membe
   return [...members].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
 }
 
-async function getCurrentCycle(groupId: string, cycleNumber: number) {
+export async function getCurrentCycle(groupId: string, cycleNumber: number) {
   return prisma.groupCycle.findFirst({ where: { groupId, cycleNumber } });
 }
 
-function parseOrder(cycle: { taskOrder: string | null }): string[] {
+export function parseOrder(cycle: { taskOrder: string | null }): string[] {
   if (!cycle.taskOrder) return [];
   try {
     return JSON.parse(cycle.taskOrder);
@@ -78,10 +79,11 @@ async function resolveDissolutionVoteIfDue(vote: {
     else no++;
   }
   const passed = yes > no;
+  const group = await prisma.group.findUniqueOrThrow({ where: { id: vote.groupId } });
 
   if (passed) {
     // Release anything not yet completed back to owners' libraries (6.12, 10.12).
-    const cycle = await getCurrentCycle(vote.groupId, (await prisma.group.findUniqueOrThrow({ where: { id: vote.groupId } })).currentCycleNumber);
+    const cycle = await getCurrentCycle(vote.groupId, group.currentCycleNumber);
     if (cycle) {
       const order = parseOrder(cycle);
       for (const taskId of order) {
@@ -91,6 +93,14 @@ async function resolveDissolutionVoteIfDue(vote: {
     }
     await prisma.group.update({ where: { id: vote.groupId }, data: { state: "DISBANDED" } });
   }
+
+  await postSystemMessage(vote.groupId, passed ? "The dissolution vote passed. This group has disbanded." : "The dissolution vote failed. The group continues.");
+  await notifyGroupMembers(
+    vote.groupId,
+    "DISSOLUTION_OUTCOME",
+    passed ? "Group dissolved" : "Group continues",
+    passed ? `${group.name} was dissolved by member vote.` : `The vote to dissolve ${group.name} did not pass.`
+  );
 
   return prisma.dissolutionVote.update({
     where: { id: vote.id },
@@ -440,7 +450,10 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
   if (!group) return res.status(404).json({ error: "Group not found." });
   if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can decide applications." });
 
-  const application = await prisma.groupApplication.findFirst({ where: { id: req.params.appId, groupId: group.id, status: "PENDING" } });
+  const application = await prisma.groupApplication.findFirst({
+    where: { id: req.params.appId, groupId: group.id, status: "PENDING" },
+    include: { applicant: true, task: true },
+  });
   if (!application) return res.status(404).json({ error: "Application not found or already decided." });
 
   const parsed = decisionSchema.safeParse(req.body);
@@ -478,16 +491,31 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
         await prisma.group.update({ where: { id: group.id }, data: { state: nextState } });
       }
     }
+
+    if (!existingMember) {
+      await postSystemMessage(group.id, `${application.applicant.firstName} joined with "${application.task.name}".`);
+      await notifyGroupMembers(group.id, "NEW_MEMBER_JOINED", "New member joined", `${application.applicant.firstName} joined ${group.name}.`, {
+        excludeUserId: application.applicantId,
+      });
+    }
+    await notifyUser(application.applicantId, "APPLICATION_APPROVED", "Application approved", `You're in ${group.name}!`);
   } else if (decision === "REJECT") {
     await prisma.$transaction([
       releaseTaskTx(application.taskId),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "REJECTED", rejectionReason: reason } }),
     ]);
+    await notifyUser(application.applicantId, "APPLICATION_REJECTED", "Application declined", `Your application to ${group.name} was declined: ${reason}`);
   } else if (decision === "REQUEST_TASK") {
     await prisma.$transaction([
       releaseTaskTx(application.taskId),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "TASK_REQUESTED", rejectionReason: reason } }),
     ]);
+    await notifyUser(
+      application.applicantId,
+      "APPLICATION_TASK_REQUESTED",
+      "Choose a different task",
+      `The leader of ${group.name} asked you to submit a different task: ${reason}`
+    );
   } else if (decision === "SUGGEST_TASK") {
     if (!suggestedTaskId) return res.status(400).json({ error: "Choose which of the applicant's tasks to suggest." });
     const suggested = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: application.applicantId, status: "AVAILABLE" } });
@@ -497,6 +525,12 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
       releaseTaskTx(application.taskId),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "TASK_SUGGESTED", suggestedTaskId } }),
     ]);
+    await notifyUser(
+      application.applicantId,
+      "APPLICATION_TASK_SUGGESTED",
+      "Task suggested",
+      `The leader of ${group.name} suggested a different one of your tasks. Open the application to respond.`
+    );
   }
 
   res.json({ ok: true });
@@ -565,6 +599,9 @@ router.post("/groups/:id/leave", async (req, res) => {
     }
   }
 
+  const leavingUser = await prisma.user.findUnique({ where: { id: req.userId } });
+  await postSystemMessage(group.id, `${leavingUser?.firstName} left the group.`);
+
   res.json({ ok: true });
 });
 
@@ -587,6 +624,9 @@ router.post("/groups/:id/disband", async (req, res) => {
   await prisma.groupApplication.updateMany({ where: { groupId: group.id, status: "PENDING" }, data: { status: "REJECTED", rejectionReason: "Group disbanded." } });
 
   await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+  await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Group disbanded", `${group.name} has been disbanded by the leader.`, {
+    excludeUserId: req.userId,
+  });
   res.json({ ok: true });
 });
 
@@ -619,10 +659,15 @@ router.post("/groups/:id/start-work", async (req, res) => {
     await tx.group.update({ where: { id: group.id }, data: { state: "WORKING" } });
   });
 
+  const firstTask = cycleTasks.find((t) => t.id === order[0])!;
+  await postSystemMessage(group.id, "Start Work — the cycle has begun!");
+  await notifyGroupMembers(group.id, "START_WORK", "Work has started", `${group.name} has started this cycle.`);
+  await notifyUser(firstTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in ${group.name} — schedule a work date.`);
+
   res.json(await serializeGroupDetail(group.id, req.userId!));
 });
 
-async function requireActiveCycle(groupId: string) {
+export async function requireActiveCycle(groupId: string) {
   const group = await prisma.group.findUnique({ where: { id: groupId } });
   if (!group || group.state !== "WORKING") return { error: "This group isn't currently working through a cycle." as const };
   const cycle = await getCurrentCycle(groupId, group.currentCycleNumber);
@@ -649,6 +694,10 @@ router.post("/groups/:id/tasks/:taskId/defer", async (req, res) => {
   ]);
   await saveOrder(ctx.cycle.id, newOrder);
 
+  const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: second } });
+  await postSystemMessage(req.params.id, `${task.name} was deferred. It's now ${nextTask.name}'s turn.`);
+  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in this group — schedule a work date.`);
+
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
 });
 
@@ -668,14 +717,18 @@ router.post("/groups/:id/tasks/:taskId/forgo", async (req, res) => {
   const newOrder = order.filter((id) => id !== task.id);
 
   await prisma.task.update({ where: { id: task.id }, data: { status: "FORGONE" } });
+  await postSystemMessage(req.params.id, `${task.name} was forgone for this cycle.`);
   if (wasActive && newOrder.length > 0) {
-    await prisma.task.update({ where: { id: newOrder[0] }, data: { status: "ACTIVE" } });
+    const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
+    await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE" } });
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in this group — schedule a work date.`);
   }
   await saveOrder(ctx.cycle.id, newOrder);
 
   if (newOrder.length === 0) {
     await prisma.group.update({ where: { id: req.params.id }, data: { state: "COMPLETED" } });
     await prisma.groupCycle.update({ where: { id: ctx.cycle.id }, data: { completedAt: new Date() } });
+    await handleCycleComplete(req.params.id);
   }
 
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
@@ -695,18 +748,29 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   // 3.10 - a completed task becomes permanently archived immediately.
   const newOrder = order.slice(1);
   await prisma.task.update({ where: { id: task.id }, data: { status: "ARCHIVED" } });
+  await postSystemMessage(req.params.id, `${task.name} was completed! 🎉`);
+  await notifyGroupMembers(req.params.id, "TASK_COMPLETED", "Task completed", `${task.name} was marked complete.`);
   if (newOrder.length > 0) {
-    await prisma.task.update({ where: { id: newOrder[0] }, data: { status: "ACTIVE" } });
+    const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
+    await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE" } });
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in this group — schedule a work date.`);
   }
   await saveOrder(ctx.cycle.id, newOrder);
 
   if (newOrder.length === 0) {
     await prisma.group.update({ where: { id: req.params.id }, data: { state: "COMPLETED" } });
     await prisma.groupCycle.update({ where: { id: ctx.cycle.id }, data: { completedAt: new Date() } });
+    await handleCycleComplete(req.params.id);
   }
 
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
 });
+
+async function handleCycleComplete(groupId: string) {
+  const group = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
+  await postSystemMessage(groupId, "Every task in this cycle is complete!");
+  await notifyUser(group.leaderId, "CYCLE_COMPLETE", "Cycle complete", "Choose whether to start a new cycle or end the group.");
+}
 
 const completeCycleSchema = z.object({ action: z.enum(["DISBAND", "START_NEW_CYCLE"]) });
 
@@ -726,11 +790,16 @@ router.post("/groups/:id/complete-cycle", async (req, res) => {
 
   if (parsed.data.action === "DISBAND") {
     await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+    await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Group disbanded", `${group.name} has ended.`, { excludeUserId: req.userId });
   } else {
     await prisma.$transaction(async (tx) => {
       const nextCycleNumber = group.currentCycleNumber + 1;
       await tx.groupCycle.create({ data: { groupId: group.id, cycleNumber: nextCycleNumber } });
       await tx.group.update({ where: { id: group.id }, data: { state: "RECRUITING", currentCycleNumber: nextCycleNumber } });
+    });
+    await postSystemMessage(group.id, "Starting a new cycle — submit a task to continue.");
+    await notifyGroupMembers(group.id, "START_NEW_CYCLE", "New cycle starting", `${group.name} is starting a new cycle. Submit a task to continue.`, {
+      excludeUserId: req.userId,
     });
   }
 
@@ -766,6 +835,16 @@ router.post("/groups/:id/dissolution/request", async (req, res) => {
     },
   });
   await prisma.dissolutionBallot.create({ data: { voteId: vote.id, userId: req.userId!, choice: "YES" } });
+
+  const requester = await prisma.user.findUnique({ where: { id: req.userId } });
+  await postSystemMessage(group.id, `${requester?.firstName} requested to dissolve the group. Voting closes in 48 hours.`);
+  await notifyGroupMembers(
+    group.id,
+    "DISSOLUTION_VOTE_STARTED",
+    "Dissolution vote started",
+    `A member of ${group.name} requested to dissolve the group. Cast your vote.`,
+    { excludeUserId: req.userId }
+  );
 
   res.status(201).json({ id: vote.id, endsAt: vote.endsAt });
 });

@@ -90,6 +90,12 @@ export default function GroupDetailScreen({ route, navigation }: any) {
       </Text>
       <Text style={styles.description}>{group.description}</Text>
 
+      {(group.isMember || group.isLeader) && (
+        <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => navigation.navigate("GroupChat", { groupId })}>
+          <Text style={styles.secondaryButtonText}>💬 Group chat</Text>
+        </TouchableOpacity>
+      )}
+
       {group.isLeader && (group.pendingApplicationCount ?? 0) > 0 && (
         <TouchableOpacity
           style={styles.banner}
@@ -121,6 +127,14 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 </Text>
                 <Text style={styles.memberTask}>{q.isActive ? "Active now" : q.status}</Text>
               </View>
+              {q.isActive && (
+                <TouchableOpacity
+                  style={styles.secondaryButtonSmall}
+                  onPress={() => navigation.navigate("TaskSchedule", { groupId, taskId: q.taskId, taskName: q.taskName })}
+                >
+                  <Text style={styles.secondaryButtonText}>Schedule</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ))}
         </Section>

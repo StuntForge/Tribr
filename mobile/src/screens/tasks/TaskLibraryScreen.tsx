@@ -13,6 +13,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   ACTIVE: "Active in group",
   COMPLETED: "Completed",
   ARCHIVED: "Archived",
+  FORGONE: "Forgone this cycle",
 };
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
@@ -23,6 +24,7 @@ const STATUS_COLOR: Record<TaskStatus, string> = {
   ACTIVE: colors.primary,
   COMPLETED: colors.textMuted,
   ARCHIVED: colors.textMuted,
+  FORGONE: colors.textMuted,
 };
 
 export default function TaskLibraryScreen({ navigation }: any) {

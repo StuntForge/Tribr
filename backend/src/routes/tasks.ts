@@ -17,7 +17,10 @@ function taskLimitFor(subscriptionTier: string) {
   return subscriptionTier === "SUBSCRIBER" ? SUBSCRIBER_TASK_LIMIT : FREE_TASK_LIMIT;
 }
 
-async function serializeTask(task: any, owner: { locationLabel: string | null; locationLat: number | null; locationLng: number | null }) {
+async function serializeTask(
+  task: any,
+  owner: { locationLabel: string | null; locationLat: number | null; locationLng: number | null; homeAddress: string | null }
+) {
   const usingHome = task.locationType === "HOME";
   return {
     id: task.id,
@@ -29,6 +32,8 @@ async function serializeTask(task: any, owner: { locationLabel: string | null; l
     locationLabel: usingHome ? owner.locationLabel : task.locationLabel,
     locationLat: usingHome ? owner.locationLat : task.locationLat,
     locationLng: usingHome ? owner.locationLng : task.locationLng,
+    // Exact address - visible here because this is always the owner's own view of their own task.
+    exactAddress: usingHome ? owner.homeAddress : task.exactAddress,
     notes: task.notes,
     status: task.status,
     groupId: task.groupId,
@@ -78,6 +83,8 @@ const locationSchema = z.union([
     label: z.string().min(1),
     lat: z.number().optional(),
     lng: z.number().optional(),
+    // Full street address - kept separate from the public-facing approximate label (3.5, 5.6).
+    exactAddress: z.string().max(200).optional(),
   }),
 ]);
 
@@ -129,6 +136,7 @@ router.post("/tasks", async (req, res) => {
       locationLabel: location.type === "CHOOSE" ? location.label : null,
       locationLat: location.type === "CHOOSE" ? location.lat : null,
       locationLng: location.type === "CHOOSE" ? location.lng : null,
+      exactAddress: location.type === "CHOOSE" ? location.exactAddress ?? null : null,
       notes,
       status: isDraft ? "DRAFT" : "AVAILABLE",
     },
@@ -181,6 +189,7 @@ router.put("/tasks/:id", async (req, res) => {
             locationLabel: location.type === "CHOOSE" ? location.label : null,
             locationLat: location.type === "CHOOSE" ? location.lat : null,
             locationLng: location.type === "CHOOSE" ? location.lng : null,
+            exactAddress: location.type === "CHOOSE" ? location.exactAddress ?? null : null,
           }
         : {}),
     },

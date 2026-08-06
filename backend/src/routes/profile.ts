@@ -18,6 +18,7 @@ function serializePrivateProfile(user: any) {
     locationLabel: user.locationLabel,
     locationLat: user.locationLat,
     locationLng: user.locationLng,
+    homeAddress: user.homeAddress,
     bio: user.bio,
     profilePhotoUrl: user.profilePhotoUrl,
     profileComplete: user.profileComplete,
@@ -61,6 +62,7 @@ const updateProfileSchema = z.object({
   locationLabel: z.string().min(1).max(120).optional(),
   locationLat: z.number().optional(),
   locationLng: z.number().optional(),
+  homeAddress: z.string().max(200).optional(),
   bio: z.string().max(1000).optional(),
   profilePhotoUrl: z.string().url().optional(),
 });

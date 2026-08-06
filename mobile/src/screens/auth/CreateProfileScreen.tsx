@@ -27,6 +27,7 @@ export default function CreateProfileScreen() {
   const [locationLabel, setLocationLabel] = useState("");
   const [locationLat, setLocationLat] = useState<number | undefined>(undefined);
   const [locationLng, setLocationLng] = useState<number | undefined>(undefined);
+  const [homeAddress, setHomeAddress] = useState("");
   const [bio, setBio] = useState("");
   const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -108,6 +109,7 @@ export default function CreateProfileScreen() {
         locationLabel: locationLabel.trim(),
         locationLat,
         locationLng,
+        homeAddress: homeAddress.trim() || undefined,
         bio: bio.trim(),
         profilePhotoUrl: photoUrl!,
       });
@@ -168,6 +170,17 @@ export default function CreateProfileScreen() {
         )}
       </TouchableOpacity>
 
+      <Text style={styles.label}>Home address (optional, private)</Text>
+      <Text style={styles.hint}>
+        Only shared with your group, for a task at your home, once a work date is confirmed. Never shown publicly.
+      </Text>
+      <TextInput
+        style={styles.input}
+        value={homeAddress}
+        onChangeText={setHomeAddress}
+        placeholder="12 Example Street, Bristol, BS1 1AA"
+      />
+
       <Text style={styles.label}>Biography</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
@@ -212,6 +225,7 @@ const styles = StyleSheet.create({
   photo: { width: "100%", height: "100%" },
   photoPickerText: { color: colors.primary, fontSize: 12, textAlign: "center", paddingHorizontal: spacing.sm },
   label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
+  hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,

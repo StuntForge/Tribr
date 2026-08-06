@@ -5,7 +5,7 @@ export interface JobCategory {
   name: string;
 }
 
-export type TaskStatus = "DRAFT" | "AVAILABLE" | "SUBMITTED" | "APPROVED" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
+export type TaskStatus = "DRAFT" | "AVAILABLE" | "SUBMITTED" | "APPROVED" | "ACTIVE" | "COMPLETED" | "ARCHIVED" | "FORGONE";
 
 export interface Task {
   id: string;
@@ -17,6 +17,7 @@ export interface Task {
   locationLabel: string | null;
   locationLat: number | null;
   locationLng: number | null;
+  exactAddress: string | null;
   notes: string | null;
   status: TaskStatus;
   groupId: string | null;
@@ -39,7 +40,7 @@ export function getTask(id: string) {
 
 export type TaskLocationInput =
   | { type: "HOME" }
-  | { type: "CHOOSE"; label: string; lat?: number; lng?: number };
+  | { type: "CHOOSE"; label: string; lat?: number; lng?: number; exactAddress?: string };
 
 export interface TaskInput {
   name: string;

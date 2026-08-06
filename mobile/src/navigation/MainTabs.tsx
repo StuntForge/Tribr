@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import PlaceholderScreen from "../screens/PlaceholderScreen";
+import NotificationsScreen from "../screens/NotificationsScreen";
 import ProfileStack from "./ProfileStack";
 import GroupsStack from "./GroupsStack";
 import { colors } from "../theme";
@@ -37,14 +38,7 @@ export default function MainTabs() {
         )}
       </Tab.Screen>
       <Tab.Screen name="Groups" component={GroupsStack} options={{ headerShown: false }} />
-      <Tab.Screen name="Notifications">
-        {() => (
-          <PlaceholderScreen
-            title="Nothing here yet"
-            body="You'll see invitations, approvals and reminders in this tab once groups are enabled."
-          />
-        )}
-      </Tab.Screen>
+      <Tab.Screen name="Notifications" component={NotificationsScreen} />
       <Tab.Screen name="Profile" component={ProfileStack} options={{ headerShown: false }} />
     </Tab.Navigator>
   );

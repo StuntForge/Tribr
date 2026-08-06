@@ -45,6 +45,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   const [locationLabel, setLocationLabel] = useState("");
   const [locationLat, setLocationLat] = useState<number | undefined>(undefined);
   const [locationLng, setLocationLng] = useState<number | undefined>(undefined);
+  const [exactAddress, setExactAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -59,6 +60,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       setLocationLabel(existingTask.locationType === "CHOOSE" ? existingTask.locationLabel ?? "" : "");
       setLocationLat(existingTask.locationLat ?? undefined);
       setLocationLng(existingTask.locationLng ?? undefined);
+      setExactAddress(existingTask.locationType === "CHOOSE" ? existingTask.exactAddress ?? "" : "");
       setNotes(existingTask.notes ?? "");
     }
   }, [existingTask]);
@@ -177,7 +179,13 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       location:
         locationType === "HOME"
           ? ({ type: "HOME" } as const)
-          : ({ type: "CHOOSE" as const, label: locationLabel.trim(), lat: locationLat, lng: locationLng }),
+          : ({
+              type: "CHOOSE" as const,
+              label: locationLabel.trim(),
+              lat: locationLat,
+              lng: locationLng,
+              exactAddress: exactAddress.trim() || undefined,
+            }),
       notes: notes.trim() || undefined,
     };
   };
@@ -280,6 +288,13 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
           <TouchableOpacity onPress={useCurrentLocation} style={styles.linkButton}>
             {locating ? <ActivityIndicator /> : <Text style={styles.linkButtonText}>Use my current location</Text>}
           </TouchableOpacity>
+          <Text style={styles.label}>Exact address (optional, private)</Text>
+          <TextInput
+            style={styles.input}
+            value={exactAddress}
+            onChangeText={setExactAddress}
+            placeholder="12 Example Street, Bristol, BS1 1AA"
+          />
         </>
       )}
       <Text style={styles.hint}>Your exact address is only shared with the group once a work date is confirmed.</Text>
