@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { addSkill, addTool, removeSkill, removeTool, setDietary } from "../api/profile";
+import { addSkill, addTool, removeSkill, removeTool, setDietary, toggleSubscriptionDev } from "../api/profile";
 import { colors, spacing } from "../theme";
 
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten Free", "Dairy Free", "Nut Allergy", "Other"];
@@ -145,9 +145,26 @@ export default function ProfileScreen({ navigation }: any) {
       <Section title="Subscription">
         <Text style={styles.hint}>
           {profile.subscriptionTier === "SUBSCRIBER"
-            ? "You're a Subscriber."
-            : "You're on the Free plan — 1 task, 1 group."}
+            ? "You're a Subscriber — up to 20 tasks, 6 groups, and you can create groups."
+            : "You're on the Free plan — 1 task, 1 group, and you can't create groups."}
         </Text>
+        <TouchableOpacity
+          style={styles.taskLibraryButton}
+          onPress={async () => {
+            setBusy(true);
+            try {
+              await toggleSubscriptionDev();
+              await refreshProfile();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Text style={styles.taskLibraryButtonText}>
+            Dev: switch to {profile.subscriptionTier === "SUBSCRIBER" ? "Free" : "Subscriber"}
+          </Text>
+        </TouchableOpacity>
+        <Text style={styles.hint}>Stand-in for real billing, which arrives in Milestone 7.</Text>
       </Section>
 
       {busy && <ActivityIndicator style={{ marginTop: spacing.md }} />}

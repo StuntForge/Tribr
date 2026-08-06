@@ -1,0 +1,21 @@
+import React from "react";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import GroupsHomeScreen from "../screens/groups/GroupsHomeScreen";
+import BrowseGroupsScreen from "../screens/groups/BrowseGroupsScreen";
+import CreateGroupScreen from "../screens/groups/CreateGroupScreen";
+import GroupDetailScreen from "../screens/groups/GroupDetailScreen";
+import ApplicationsScreen from "../screens/groups/ApplicationsScreen";
+
+const Stack = createNativeStackNavigator();
+
+export default function GroupsStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="GroupsHome" component={GroupsHomeScreen} options={{ title: "Groups" }} />
+      <Stack.Screen name="BrowseGroups" component={BrowseGroupsScreen} options={{ title: "Browse Groups" }} />
+      <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ title: "Create Group" }} />
+      <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: "Group" }} />
+      <Stack.Screen name="Applications" component={ApplicationsScreen} options={{ title: "Applications" }} />
+    </Stack.Navigator>
+  );
+}

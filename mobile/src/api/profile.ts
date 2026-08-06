@@ -61,3 +61,8 @@ export function removeTool(id: string) {
 export function setDietary(types: string[]) {
   return apiFetch<{ types: string[] }>("/api/me/dietary", { method: "PUT", body: { types } });
 }
+
+// Dev-only stand-in for real subscription billing (Milestone 7 / Stripe).
+export function toggleSubscriptionDev() {
+  return apiFetch<{ subscriptionTier: "FREE" | "SUBSCRIBER" }>("/api/dev/toggle-subscription", { method: "POST" });
+}

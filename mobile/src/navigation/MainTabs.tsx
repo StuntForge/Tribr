@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import PlaceholderScreen from "../screens/PlaceholderScreen";
 import ProfileStack from "./ProfileStack";
+import GroupsStack from "./GroupsStack";
 import { colors } from "../theme";
 
 const Tab = createBottomTabNavigator();
@@ -35,14 +36,7 @@ export default function MainTabs() {
           />
         )}
       </Tab.Screen>
-      <Tab.Screen name="Groups">
-        {() => (
-          <PlaceholderScreen
-            title="No groups yet"
-            body="Once you can create a personal task, you'll be able to create or join a group here."
-          />
-        )}
-      </Tab.Screen>
+      <Tab.Screen name="Groups" component={GroupsStack} options={{ headerShown: false }} />
       <Tab.Screen name="Notifications">
         {() => (
           <PlaceholderScreen

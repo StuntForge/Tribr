@@ -248,6 +248,7 @@ model GroupApplication {
   status      String   @default("PENDING")
   // PENDING | APPROVED | REJECTED | TASK_SUGGESTED | TASK_REQUESTED
   rejectionReason String?
+  suggestedTaskId String?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
