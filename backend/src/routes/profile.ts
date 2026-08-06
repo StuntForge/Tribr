@@ -2,13 +2,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { computeRatingSummary } from "../services/ratings";
 
 const router = Router();
 router.use(requireAuth);
 
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten Free", "Dairy Free", "Nut Allergy", "Other"];
 
-function serializePrivateProfile(user: any) {
+function serializePrivateProfile(user: any, ratings: Awaited<ReturnType<typeof computeRatingSummary>>) {
   return {
     id: user.id,
     phone: user.phone,
@@ -27,11 +28,10 @@ function serializePrivateProfile(user: any) {
     tools: user.tools?.map((t: any) => ({ id: t.id, label: t.label })) ?? [],
     dietary: user.dietary?.map((d: any) => d.type) ?? [],
     photos: user.photos?.map((p: any) => ({ id: p.id, url: p.url })) ?? [],
-    // Rating aggregates arrive with Milestone 5; new accounts show as unrated.
-    overallRating: null,
-    workerRating: null,
-    hostRating: null,
-    completedCycles: 0,
+    overallRating: ratings.overallRating,
+    workerRating: ratings.workerRating,
+    hostRating: ratings.hostRating,
+    completedCycles: ratings.completedCycles,
   };
 }
 
@@ -52,7 +52,7 @@ router.get("/me", async (req, res) => {
     include: { skills: true, tools: true, dietary: true, photos: true },
   });
   if (!user) return res.status(404).json({ error: "Account not found." });
-  res.json(serializePrivateProfile(user));
+  res.json(serializePrivateProfile(user, await computeRatingSummary(user.id)));
 });
 
 const updateProfileSchema = z.object({
@@ -86,7 +86,7 @@ router.put("/me", async (req, res) => {
     include: { skills: true, tools: true, dietary: true, photos: true },
   });
 
-  res.json(serializePrivateProfile(updated));
+  res.json(serializePrivateProfile(updated, await computeRatingSummary(updated.id)));
 });
 
 // ---- Skills (2.6) ----
@@ -178,6 +178,8 @@ router.get("/users/:id", async (req, res) => {
     approxDistanceMiles = haversineMiles(requester.locationLat, requester.locationLng, target.locationLat, target.locationLng);
   }
 
+  const ratings = await computeRatingSummary(target.id);
+
   res.json({
     id: target.id,
     firstName: target.firstName,
@@ -189,10 +191,10 @@ router.get("/users/:id", async (req, res) => {
     photos: target.photos.map((p) => ({ id: p.id, url: p.url })),
     skills: target.skills.map((s) => s.label),
     tools: target.tools.map((t) => t.label),
-    overallRating: null,
-    workerRating: null,
-    hostRating: null,
-    completedCycles: 0,
+    overallRating: ratings.overallRating,
+    workerRating: ratings.workerRating,
+    hostRating: ratings.hostRating,
+    completedCycles: ratings.completedCycles,
   });
 });
 

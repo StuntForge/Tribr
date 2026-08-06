@@ -144,8 +144,34 @@ export function forgoTask(groupId: string, taskId: string) {
   return apiFetch<GroupDetail>(`/api/groups/${groupId}/tasks/${taskId}/forgo`, { method: "POST" });
 }
 
-export function completeTask(groupId: string, taskId: string) {
-  return apiFetch<GroupDetail>(`/api/groups/${groupId}/tasks/${taskId}/complete`, { method: "POST" });
+export interface Attendee {
+  userId: string;
+  firstName: string | null;
+}
+
+export function getAttendees(groupId: string, taskId: string) {
+  return apiFetch<Attendee[]>(`/api/groups/${groupId}/tasks/${taskId}/attendees`);
+}
+
+export type AttendanceStatus = "ATTENDED" | "NO_SHOW" | "VALID_REASON";
+
+export interface AttendanceEntry {
+  userId: string;
+  status: AttendanceStatus;
+  performance?: number;
+  attitude?: number;
+  reliability?: number;
+}
+
+export function completeTask(groupId: string, taskId: string, attendance: AttendanceEntry[]) {
+  return apiFetch<GroupDetail>(`/api/groups/${groupId}/tasks/${taskId}/complete`, { method: "POST", body: { attendance } });
+}
+
+export function rateHost(groupId: string, taskId: string, hosting: number, accuracy: number, attitude: number) {
+  return apiFetch<{ ok: true }>(`/api/groups/${groupId}/tasks/${taskId}/rate-host`, {
+    method: "POST",
+    body: { hosting, accuracy, attitude },
+  });
 }
 
 export function completeCycle(groupId: string, action: "DISBAND" | "START_NEW_CYCLE") {

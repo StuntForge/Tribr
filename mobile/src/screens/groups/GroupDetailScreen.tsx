@@ -5,7 +5,6 @@ import {
   applyToGroup,
   castDissolutionBallot,
   completeCycle,
-  completeTask,
   deferTask,
   disbandGroup,
   forgoTask,
@@ -50,7 +49,6 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const startWorkMutation = useAction(() => startWork(groupId));
   const deferMutation = useAction((taskId: string) => deferTask(groupId, taskId));
   const forgoMutation = useAction((taskId: string) => forgoTask(groupId, taskId));
-  const completeMutation = useAction((taskId: string) => completeTask(groupId, taskId));
   const completeCycleMutation = useAction((action: "DISBAND" | "START_NEW_CYCLE") => completeCycle(groupId, action));
   const requestDissolutionMutation = useAction(() => requestDissolution(groupId));
   const ballotMutation = useAction((choice: "YES" | "NO") => castDissolutionBallot(groupId, group!.dissolutionVote!.id, choice));
@@ -145,7 +143,9 @@ export default function GroupDetailScreen({ route, navigation }: any) {
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={styles.primaryButtonSmall}
-              onPress={() => completeMutation.mutate(myActiveQueueTask.taskId)}
+              onPress={() =>
+                navigation.navigate("CompleteTask", { groupId, taskId: myActiveQueueTask.taskId, taskName: myActiveQueueTask.taskName })
+              }
             >
               <Text style={styles.primaryButtonText}>Mark complete</Text>
             </TouchableOpacity>

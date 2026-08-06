@@ -25,7 +25,9 @@ export default function NotificationsScreen({ navigation }: any) {
 
   const onPress = (item: NotificationItem) => {
     if (!item.read) readMutation.mutate(item.id);
-    if (item.groupId) {
+    if (item.type === "RATE_HOST_PENDING" && item.groupId && item.taskId) {
+      navigation.navigate("Groups", { screen: "RateHost", params: { groupId: item.groupId, taskId: item.taskId } });
+    } else if (item.groupId) {
       navigation.navigate("Groups", { screen: "GroupDetail", params: { groupId: item.groupId } });
     }
   };

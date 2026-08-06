@@ -13,6 +13,26 @@ async function requireGroupMember(groupId: string, userId: string) {
   return Boolean(member && member.status === "ACTIVE");
 }
 
+// 6.3 - who the task owner needs to rate: members who confirmed availability
+// for the confirmed date, excluding the owner themselves.
+router.get("/groups/:id/tasks/:taskId/attendees", async (req, res) => {
+  const isMember = await requireGroupMember(req.params.id, req.userId!);
+  if (!isMember) return res.status(403).json({ error: "Only group members can view this." });
+
+  const task = await prisma.task.findFirst({ where: { id: req.params.taskId, groupId: req.params.id } });
+  if (!task) return res.status(404).json({ error: "Task not found in this group." });
+
+  const workDay = await prisma.workDay.findUnique({ where: { taskId: task.id } });
+  if (!workDay) return res.json([]);
+
+  const responses = await prisma.availabilityResponse.findMany({
+    where: { available: true, dateOption: { proposal: { taskId: task.id }, date: workDay.confirmedDate }, userId: { not: task.ownerId } },
+    include: { user: true },
+  });
+
+  res.json(responses.map((r) => ({ userId: r.userId, firstName: r.user.firstName })));
+});
+
 // 5.2/5.3/5.6 - the active task owner's scheduling workspace for their task.
 router.get("/groups/:id/tasks/:taskId/schedule", async (req, res) => {
   const isMember = await requireGroupMember(req.params.id, req.userId!);

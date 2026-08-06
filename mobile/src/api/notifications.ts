@@ -6,6 +6,7 @@ export interface NotificationItem {
   title: string;
   body: string;
   groupId?: string;
+  taskId?: string;
   read: boolean;
   createdAt: string;
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
+import { revealCycleRatings } from "../services/ratings";
 
 const router = Router();
 router.use(requireAuth);
@@ -90,6 +91,11 @@ async function resolveDissolutionVoteIfDue(vote: {
         await releaseTask(taskId);
       }
       await saveOrder(cycle.id, []);
+      // 6.7/6.12 - ratings already collected in this cycle still count. Mark
+      // the cycle itself as ended too, so a late host-rating (submitted
+      // after this point) reveals immediately instead of hiding forever.
+      await prisma.groupCycle.update({ where: { id: cycle.id }, data: { completedAt: new Date() } });
+      await revealCycleRatings(cycle.id);
     }
     await prisma.group.update({ where: { id: vote.groupId }, data: { state: "DISBANDED" } });
   }
@@ -734,8 +740,22 @@ router.post("/groups/:id/tasks/:taskId/forgo", async (req, res) => {
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
 });
 
-// Mark the active task complete. In this milestone the owner self-reports;
-// Milestones 4/5 (scheduling + ratings) will hook a richer trigger in here.
+const scoreSchema = z.number().int().min(1).max(5);
+
+const completeTaskSchema = z.object({
+  attendance: z.array(
+    z.object({
+      userId: z.string().min(1),
+      status: z.enum(["ATTENDED", "NO_SHOW", "VALID_REASON"]),
+      performance: scoreSchema.optional(),
+      attitude: scoreSchema.optional(),
+      reliability: scoreSchema.optional(),
+    })
+  ),
+});
+
+// 6.3/6.6 - completing a task requires the owner to record attendance and
+// rate every member who confirmed availability. 3.10 - it then archives.
 router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   const ctx = await requireActiveCycle(req.params.id);
   if ("error" in ctx) return res.status(400).json({ error: ctx.error });
@@ -745,11 +765,57 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   const task = await prisma.task.findFirst({ where: { id: req.params.taskId, ownerId: req.userId } });
   if (!task) return res.status(403).json({ error: "This isn't your task." });
 
+  const workDay = await prisma.workDay.findUnique({ where: { taskId: task.id } });
+  if (!workDay) return res.status(400).json({ error: "Confirm a work date before marking this task complete." });
+
+  const parsed = completeTaskSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  // 6.5 - only members who marked themselves available are in scope at all.
+  const availableResponses = await prisma.availabilityResponse.findMany({
+    where: { available: true, dateOption: { proposal: { taskId: task.id }, date: workDay.confirmedDate } },
+  });
+  const expectedUserIds = new Set(availableResponses.map((r) => r.userId).filter((id) => id !== task.ownerId));
+  const providedUserIds = new Set(parsed.data.attendance.map((a) => a.userId));
+  if (expectedUserIds.size !== providedUserIds.size || [...expectedUserIds].some((id) => !providedUserIds.has(id))) {
+    return res.status(400).json({ error: "Attendance must cover exactly the members who confirmed availability." });
+  }
+  for (const entry of parsed.data.attendance) {
+    if (entry.status === "ATTENDED" && (entry.performance == null || entry.attitude == null || entry.reliability == null)) {
+      return res.status(400).json({ error: "Rate performance, attitude and reliability for every attendee." });
+    }
+  }
+
+  await Promise.all(
+    parsed.data.attendance.map((entry) => {
+      const base = { taskId: task.id, raterId: req.userId!, rateeId: entry.userId, type: "WORKER" as const, visible: false };
+      if (entry.status === "ATTENDED") {
+        return prisma.ratingEvent.create({
+          data: { ...base, scoreA: entry.performance!, scoreB: entry.attitude!, scoreC: entry.reliability! },
+        });
+      }
+      const noShow = entry.status === "NO_SHOW";
+      // 6.6 - hidden 1/5 for a no-show, hidden neutral 3/5 for a valid reason.
+      const score = noShow ? 1 : 3;
+      return prisma.ratingEvent.create({
+        data: { ...base, scoreA: score, scoreB: score, scoreC: score, isNoShow: noShow, isValidAbsence: !noShow },
+      });
+    })
+  );
+
+  const attendedUserIds = parsed.data.attendance.filter((a) => a.status === "ATTENDED").map((a) => a.userId);
+
   // 3.10 - a completed task becomes permanently archived immediately.
   const newOrder = order.slice(1);
   await prisma.task.update({ where: { id: task.id }, data: { status: "ARCHIVED" } });
   await postSystemMessage(req.params.id, `${task.name} was completed! 🎉`);
   await notifyGroupMembers(req.params.id, "TASK_COMPLETED", "Task completed", `${task.name} was marked complete.`);
+  for (const userId of attendedUserIds) {
+    await notifyUser(userId, "RATE_HOST_PENDING", "Rate the host", `How was ${task.name}? Rate the host while it's fresh.`, {
+      groupId: req.params.id,
+      taskId: task.id,
+    });
+  }
   if (newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
     await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE" } });
@@ -766,8 +832,51 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
 });
 
+const rateHostSchema = z.object({ hosting: scoreSchema, accuracy: scoreSchema, attitude: scoreSchema });
+
+// 6.4 - every attending member rates the task owner once the task is done.
+router.post("/groups/:id/tasks/:taskId/rate-host", async (req, res) => {
+  const task = await prisma.task.findFirst({ where: { id: req.params.taskId, groupId: req.params.id, status: "ARCHIVED" } });
+  if (!task) return res.status(404).json({ error: "Completed task not found." });
+  if (task.ownerId === req.userId) return res.status(400).json({ error: "You can't rate your own task." });
+
+  const attended = await prisma.ratingEvent.findFirst({
+    where: { taskId: task.id, rateeId: req.userId, type: "WORKER", isNoShow: false, isValidAbsence: false },
+  });
+  if (!attended) return res.status(403).json({ error: "Only attendees can rate the host." });
+
+  const already = await prisma.ratingEvent.findFirst({ where: { taskId: task.id, raterId: req.userId, type: "HOST" } });
+  if (already) return res.status(400).json({ error: "You've already rated this host." });
+
+  const parsed = rateHostSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  // The cycle-complete reveal trigger only fires once. If this rating arrives
+  // after that already happened (rating the host is an async, whenever-you-
+  // get-to-it action), reveal it immediately instead of hiding it forever.
+  const alreadyEnded = task.cycleId ? (await prisma.groupCycle.findUnique({ where: { id: task.cycleId } }))?.completedAt != null : false;
+
+  await prisma.ratingEvent.create({
+    data: {
+      taskId: task.id,
+      raterId: req.userId!,
+      rateeId: task.ownerId,
+      type: "HOST",
+      scoreA: parsed.data.hosting,
+      scoreB: parsed.data.accuracy,
+      scoreC: parsed.data.attitude,
+      visible: alreadyEnded,
+    },
+  });
+
+  res.json({ ok: true });
+});
+
 async function handleCycleComplete(groupId: string) {
   const group = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
+  const cycle = await getCurrentCycle(groupId, group.currentCycleNumber);
+  // 6.7 - ratings collected during this cycle become part of public reputation now.
+  if (cycle) await revealCycleRatings(cycle.id);
   await postSystemMessage(groupId, "Every task in this cycle is complete!");
   await notifyUser(group.leaderId, "CYCLE_COMPLETE", "Cycle complete", "Choose whether to start a new cycle or end the group.");
 }

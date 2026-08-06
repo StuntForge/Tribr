@@ -68,6 +68,7 @@ router.get("/", async (req, res) => {
         title: payload.title,
         body: payload.body,
         groupId: payload.groupId,
+        taskId: payload.taskId,
         read: n.read,
         createdAt: n.createdAt,
       };

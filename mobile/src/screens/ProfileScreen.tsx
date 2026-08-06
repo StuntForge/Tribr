@@ -21,6 +21,7 @@ export default function ProfileScreen({ navigation }: any) {
   const [newSkill, setNewSkill] = useState("");
   const [newTool, setNewTool] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   if (!profile) return null;
 
@@ -104,6 +105,21 @@ export default function ProfileScreen({ navigation }: any) {
           </Text>
           <Text style={styles.ratingSub}>{profile.completedCycles} cycles completed</Text>
         </View>
+        {profile.overallRating != null && (
+          <TouchableOpacity onPress={() => setShowBreakdown((v) => !v)}>
+            <Text style={styles.breakdownToggle}>{showBreakdown ? "Hide" : "Show"} rating breakdown</Text>
+          </TouchableOpacity>
+        )}
+        {showBreakdown && (
+          <View style={styles.breakdownRow}>
+            <Text style={styles.breakdownItem}>
+              Worker: {profile.workerRating != null ? `★ ${profile.workerRating.toFixed(1)}` : "No ratings yet"}
+            </Text>
+            <Text style={styles.breakdownItem}>
+              Host: {profile.hostRating != null ? `★ ${profile.hostRating.toFixed(1)}` : "No ratings yet"}
+            </Text>
+          </View>
+        )}
       </View>
 
       <Text style={styles.bio}>{profile.bio}</Text>
@@ -241,6 +257,9 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm },
   ratingText: { fontSize: 14, fontWeight: "600", color: colors.star },
   ratingSub: { fontSize: 12, color: colors.textMuted },
+  breakdownToggle: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: spacing.sm },
+  breakdownRow: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
+  breakdownItem: { fontSize: 13, color: colors.text },
   bio: { fontSize: 14, color: colors.text, textAlign: "center", marginBottom: spacing.lg, lineHeight: 20 },
   section: { marginBottom: spacing.lg },
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },

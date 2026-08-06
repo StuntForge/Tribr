@@ -7,6 +7,8 @@ import GroupDetailScreen from "../screens/groups/GroupDetailScreen";
 import ApplicationsScreen from "../screens/groups/ApplicationsScreen";
 import GroupChatScreen from "../screens/groups/GroupChatScreen";
 import TaskScheduleScreen from "../screens/groups/TaskScheduleScreen";
+import CompleteTaskScreen from "../screens/groups/CompleteTaskScreen";
+import RateHostScreen from "../screens/groups/RateHostScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -20,6 +22,8 @@ export default function GroupsStack() {
       <Stack.Screen name="Applications" component={ApplicationsScreen} options={{ title: "Applications" }} />
       <Stack.Screen name="GroupChat" component={GroupChatScreen} options={{ title: "Group Chat" }} />
       <Stack.Screen name="TaskSchedule" component={TaskScheduleScreen} options={{ title: "Schedule" }} />
+      <Stack.Screen name="CompleteTask" component={CompleteTaskScreen} options={{ title: "Complete Task" }} />
+      <Stack.Screen name="RateHost" component={RateHostScreen} options={{ title: "Rate the Host" }} />
     </Stack.Navigator>
   );
 }
