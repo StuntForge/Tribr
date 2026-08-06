@@ -10,7 +10,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "seed:admin": "tsx scripts/seedAdmin.ts",
+    "stripe:setup": "tsx scripts/stripeSetup.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
@@ -20,6 +22,7 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "stripe": "^22.4.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

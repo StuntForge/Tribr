@@ -12,10 +12,15 @@ import scheduleRoutes from "./routes/schedule";
 import chatRoutes from "./routes/chat";
 import notificationRoutes from "./routes/notifications";
 import searchRoutes from "./routes/search";
+import subscriptionRoutes from "./routes/subscription";
+import stripeWebhookRoutes from "./routes/stripeWebhook";
 
 const app = express();
 
 app.use(cors());
+// Stripe webhook needs the raw, unparsed body to verify its signature, so it
+// must be mounted before the global JSON body parser.
+app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
@@ -28,6 +33,7 @@ app.use("/api", groupRoutes);
 app.use("/api", scheduleRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", searchRoutes);
+app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/dev", devRoutes);
 app.use("/api/notifications", notificationRoutes);

@@ -42,6 +42,12 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         <Text style={styles.blockedBody}>
           Creating a group is a Subscriber feature. Free members can still browse and apply to groups.
         </Text>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => navigation.navigate("Profile", { screen: "Subscription" })}
+        >
+          <Text style={styles.primaryButtonText}>View subscription options</Text>
+        </TouchableOpacity>
       </View>
     );
   }
