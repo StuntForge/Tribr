@@ -1,9 +1,9 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { colors, spacing } from "../theme";
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }: any) {
   const { profile } = useAuth();
 
   return (
@@ -12,9 +12,15 @@ export default function HomeScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>You don't have any active groups yet</Text>
         <Text style={styles.cardBody}>
-          Add a task to your library from the Profile tab, then browse or create a group from the Search tab to
-          get started.
+          Start by adding a task you'd like help with. Once you have one, you can browse or create a group from
+          the Search tab.
         </Text>
+        <TouchableOpacity
+          style={styles.cardButton}
+          onPress={() => navigation.navigate("Profile", { screen: "TaskLibrary" })}
+        >
+          <Text style={styles.cardButtonText}>Add a task</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -32,4 +38,12 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.xs },
   cardBody: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
+  cardButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    padding: spacing.md,
+    alignItems: "center",
+    marginTop: spacing.md,
+  },
+  cardButtonText: { color: "#fff", fontWeight: "600" },
 });

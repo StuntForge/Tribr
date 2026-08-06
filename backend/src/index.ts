@@ -5,6 +5,7 @@ import path from "node:path";
 import authRoutes from "./routes/auth";
 import profileRoutes from "./routes/profile";
 import uploadRoutes from "./routes/uploads";
+import taskRoutes from "./routes/tasks";
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api", profileRoutes);
+app.use("/api", taskRoutes);
 app.use("/api/uploads", uploadRoutes);
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

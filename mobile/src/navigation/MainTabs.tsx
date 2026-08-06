@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import PlaceholderScreen from "../screens/PlaceholderScreen";
-import ProfileScreen from "../screens/ProfileScreen";
+import ProfileStack from "./ProfileStack";
 import { colors } from "../theme";
 
 const Tab = createBottomTabNavigator();
@@ -51,7 +51,7 @@ export default function MainTabs() {
           />
         )}
       </Tab.Screen>
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileStack} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }

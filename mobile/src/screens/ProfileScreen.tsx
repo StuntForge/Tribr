@@ -16,7 +16,7 @@ import { colors, spacing } from "../theme";
 
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten Free", "Dairy Free", "Nut Allergy", "Other"];
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }: any) {
   const { profile, refreshProfile, signOut } = useAuth();
   const [newSkill, setNewSkill] = useState("");
   const [newTool, setNewTool] = useState("");
@@ -107,6 +107,12 @@ export default function ProfileScreen() {
       </View>
 
       <Text style={styles.bio}>{profile.bio}</Text>
+
+      <Section title="Personal task library">
+        <TouchableOpacity style={styles.taskLibraryButton} onPress={() => navigation.navigate("TaskLibrary")}>
+          <Text style={styles.taskLibraryButtonText}>View my tasks</Text>
+        </TouchableOpacity>
+      </Section>
 
       <Section title="Skills">
         <ChipList items={profile.skills.map((s) => ({ id: s.id, label: s.label }))} onRemove={onRemoveSkill} />
@@ -247,6 +253,14 @@ const styles = StyleSheet.create({
   },
   addButton: { justifyContent: "center", paddingHorizontal: spacing.md, backgroundColor: colors.primary, borderRadius: 8 },
   addButtonText: { color: "#fff", fontWeight: "600" },
+  taskLibraryButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    padding: spacing.md,
+    alignItems: "center",
+  },
+  taskLibraryButtonText: { color: colors.primary, fontWeight: "600" },
   signOutButton: { marginTop: spacing.xl, alignItems: "center", padding: spacing.md },
   signOutText: { color: colors.danger, fontWeight: "600" },
 });
