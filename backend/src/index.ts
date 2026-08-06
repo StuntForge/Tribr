@@ -14,6 +14,7 @@ import notificationRoutes from "./routes/notifications";
 import searchRoutes from "./routes/search";
 import subscriptionRoutes from "./routes/subscription";
 import stripeWebhookRoutes from "./routes/stripeWebhook";
+import adminRoutes from "./routes/admin";
 
 const app = express();
 
@@ -26,17 +27,24 @@ app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// More specific paths must be mounted before the generic "/api" routers
+// below - Express matches app.use() by path prefix in registration order,
+// not by best match, so a generic "/api" router mounted first would
+// otherwise intercept e.g. "/api/admin/login" and run its own (wrong, or in
+// admin's case entirely inapplicable) auth check before this ever gets hit.
 app.use("/api/auth", authRoutes);
+app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/uploads", uploadRoutes);
+app.use("/api/dev", devRoutes);
+app.use("/api/notifications", notificationRoutes);
+
 app.use("/api", profileRoutes);
 app.use("/api", taskRoutes);
 app.use("/api", groupRoutes);
 app.use("/api", scheduleRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", searchRoutes);
-app.use("/api/subscription", subscriptionRoutes);
-app.use("/api/uploads", uploadRoutes);
-app.use("/api/dev", devRoutes);
-app.use("/api/notifications", notificationRoutes);
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

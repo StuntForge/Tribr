@@ -467,4 +467,20 @@ model AdminUser {
   passwordHash String
   role         String   @default("ADMIN") // ADMIN | SUPPORT
   createdAt    DateTime @default(now())
+
+  auditLogs    AdminAuditLog[]
+}
+
+// 8.11 - administrative actions are logged with timestamps for an audit trail.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  admin      AdminUser @relation(fields: [adminId], references: [id])
+  action     String
+  targetType String?
+  targetId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
 }
