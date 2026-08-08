@@ -27,7 +27,7 @@ export default function PhoneEntryScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Project Exchange</Text>
+      <Text style={styles.title}>Tribr</Text>
       <Text style={styles.subtitle}>
         Trade your labour, not your money. Enter your mobile number to get started.
       </Text>

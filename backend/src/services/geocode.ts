@@ -12,7 +12,7 @@ export async function geocodeLabel(label: string): Promise<{ lat: number; lng: n
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(trimmed)}`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "ProjectExchange/1.0 (dev testing; contact via app)" },
+      headers: { "User-Agent": "Tribr/1.0 (dev testing; contact via app)" },
     });
     if (!res.ok) return null;
     const results = (await res.json()) as { lat: string; lon: string }[];

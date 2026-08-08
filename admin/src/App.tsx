@@ -16,7 +16,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="layout">
       <div className="sidebar">
-        <h1>Project Exchange</h1>
+        <h1>Tribr</h1>
         <NavLink to="/" end>
           Dashboard
         </NavLink>

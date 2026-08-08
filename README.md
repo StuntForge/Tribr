@@ -1,4 +1,4 @@
-# Project Exchange
+# Tribr
 
 A labour-exchange app: members trade work instead of money, built from the
 functional design spec in `Spreading your load/Merged.pdf`.

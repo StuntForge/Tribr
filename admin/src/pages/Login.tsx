@@ -27,7 +27,7 @@ export default function Login() {
   return (
     <div className="login-screen">
       <form className="login-box" onSubmit={onSubmit}>
-        <h2>Project Exchange Admin</h2>
+        <h2>Tribr Admin</h2>
         <div className="field">
           <label>Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

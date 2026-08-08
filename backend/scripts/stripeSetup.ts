@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getStripe, stripeConfigured } from "../src/services/stripe";
 
-const PRODUCT_NAME = "Project Exchange Subscriber";
+const PRODUCT_NAME = "Tribr Subscriber";
 const AMOUNT_PENCE = 499;
 const CURRENCY = "gbp";
 

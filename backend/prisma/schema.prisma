@@ -1,4 +1,4 @@
-// Project Exchange - data model
+// Tribr - data model
 // Hosted on Postgres (Neon/Supabase) - DATABASE_URL points at it both for
 // local dev and the deployed backend, so there's one shared database rather
 // than a separate local SQLite file.

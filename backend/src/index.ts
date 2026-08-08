@@ -53,5 +53,5 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 app.listen(port, () => {
-  console.log(`Project Exchange API listening on http://localhost:${port}`);
+  console.log(`Tribr API listening on http://localhost:${port}`);
 });

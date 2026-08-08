@@ -1,25 +1,29 @@
 {
   "expo": {
-    "name": "Project Exchange",
-    "slug": "mobile",
-    "scheme": "projectexchange",
+    "name": "Tribr",
+    "slug": "tribr",
+    "scheme": "tribr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.projectexchange.app"
+      "bundleIdentifier": "com.tribr.app"
     },
     "android": {
-      "package": "com.projectexchange.app",
+      "package": "com.tribr.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -29,10 +33,16 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Allow Project Exchange to add confirmed work days to your calendar."
+          "calendarPermission": "Allow Tribr to add confirmed work days to your calendar."
         }
       ],
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "370e8c99-2253-4f26-8b55-931dfea62094"
+      }
+    },
+    "owner": "tribr"
   }
 }
