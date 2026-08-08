@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { rateHost } from "../../api/groups";
-import { colors, spacing } from "../../theme";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getGroup, rateHost } from "../../api/groups";
+import { colors, radii, spacing } from "../../theme";
 
 export default function RateHostScreen({ route, navigation }: any) {
   const { groupId, taskId, taskName } = route.params as { groupId: string; taskId: string; taskName?: string };
@@ -12,10 +12,14 @@ export default function RateHostScreen({ route, navigation }: any) {
   const [attitude, setAttitude] = useState(3);
   const [error, setError] = useState<string | null>(null);
 
+  const { data: group } = useQuery({ queryKey: ["group", groupId], queryFn: () => getGroup(groupId) });
+  const host = group?.members.find((m) => m.currentTask?.id === taskId);
+
   const mutation = useMutation({
     mutationFn: () => rateHost(groupId, taskId, hosting, accuracy, attitude),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["action-items"] });
       Alert.alert("Thanks!", "Your rating stays hidden until the cycle ends.", [{ text: "OK", onPress: () => navigation.goBack() }]);
     },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
@@ -27,6 +31,29 @@ export default function RateHostScreen({ route, navigation }: any) {
       <Text style={styles.subtitle}>
         {taskName ? `How was "${taskName}"?` : "How was this task?"} This stays hidden until the cycle ends.
       </Text>
+
+      {(group || host) && (
+        <View style={styles.contextCard}>
+          {group && (
+            <View style={styles.contextRow}>
+              <Text style={styles.contextLabel}>Group</Text>
+              <Text style={styles.contextValue}>{group.name}</Text>
+            </View>
+          )}
+          {host && (
+            <View style={styles.contextRow}>
+              <Text style={styles.contextLabel}>Host</Text>
+              <Text style={styles.contextValue}>{host.firstName}</Text>
+            </View>
+          )}
+          {taskName && (
+            <View style={styles.contextRow}>
+              <Text style={styles.contextLabel}>Task</Text>
+              <Text style={styles.contextValue}>{taskName}</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       <ScoreRow label="Hosting (preparation & organisation)" value={hosting} onChange={setHosting} />
       <ScoreRow label="Accuracy (matched what was described)" value={accuracy} onChange={setAccuracy} />
@@ -59,7 +86,19 @@ function ScoreRow({ label, value, onChange }: { label: string; value: number; on
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
   title: { fontSize: 20, fontWeight: "700", color: colors.text },
-  subtitle: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.lg },
+  subtitle: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
+  contextCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.xs,
+  },
+  contextRow: { flexDirection: "row", justifyContent: "space-between" },
+  contextLabel: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
+  contextValue: { fontSize: 13, color: colors.text, fontWeight: "700" },
   scoreRow: { marginBottom: spacing.lg },
   scoreLabel: { fontSize: 13, color: colors.text, marginBottom: spacing.sm, fontWeight: "600" },
   scoreButtons: { flexDirection: "row", gap: spacing.sm },

@@ -8,6 +8,7 @@ import UserDetail from "./pages/UserDetail";
 import Reports from "./pages/Reports";
 import Subscriptions from "./pages/Subscriptions";
 import JobCategories from "./pages/JobCategories";
+import Broadcast from "./pages/Broadcast";
 import AuditLog from "./pages/AuditLog";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         <NavLink to="/reports">Reports</NavLink>
         <NavLink to="/subscriptions">Subscriptions</NavLink>
         <NavLink to="/job-categories">Job Categories</NavLink>
+        <NavLink to="/broadcast">Broadcast</NavLink>
         <NavLink to="/audit-log">Audit Log</NavLink>
         <div className="logout">
           <p style={{ fontSize: 12, padding: "0 20px", opacity: 0.7 }}>{admin?.email}</p>
@@ -104,6 +106,14 @@ function AppRoutes() {
         element={
           <Protected>
             <JobCategories />
+          </Protected>
+        }
+      />
+      <Route
+        path="/broadcast"
+        element={
+          <Protected>
+            <Broadcast />
           </Protected>
         }
       />

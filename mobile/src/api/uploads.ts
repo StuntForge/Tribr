@@ -16,6 +16,7 @@ export async function uploadPhoto(localUri: string): Promise<{ url: string }> {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       "Content-Type": "multipart/form-data",
+      "ngrok-skip-browser-warning": "true",
     },
     body: form,
   });

@@ -17,6 +17,7 @@ export default function Reports() {
   const navigate = useNavigate();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [status, setStatus] = useState("OPEN");
+  const [message, setMessage] = useState<string | null>(null);
 
   const load = () => {
     apiFetch<ReportRow[]>(`/api/admin/reports?status=${status}`).then(setReports);
@@ -24,8 +25,15 @@ export default function Reports() {
 
   useEffect(load, [status]);
 
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
   const resolve = async (id: string, newStatus: "RESOLVED" | "DISMISSED") => {
     await apiFetch(`/api/admin/reports/${id}/resolve`, { method: "POST", body: { status: newStatus } });
+    setMessage(newStatus === "RESOLVED" ? "Report resolved." : "Report dismissed.");
     load();
   };
 
@@ -39,6 +47,12 @@ export default function Reports() {
           <option value="DISMISSED">Dismissed</option>
         </select>
       </div>
+
+      {message && (
+        <p className="hint" style={{ color: "#3D6B52", fontWeight: 600 }}>
+          {message}
+        </p>
+      )}
 
       {reports.length === 0 ? (
         <p className="hint">No reports here.</p>

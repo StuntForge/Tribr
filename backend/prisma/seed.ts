@@ -3,18 +3,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 // 3.3 - initial job categories
-const CATEGORIES = [
-  "Decorating",
-  "Gardening",
-  "Landscaping",
-  "Cleaning",
-  "Carpentry",
-  "General DIY",
-  "Painting",
-  "Moving",
-  "Organisation",
-  "Other",
-];
+const CATEGORIES = ["Gardening", "Moving & Lifting", "DIY & General", "Decorating"];
 
 async function main() {
   for (const name of CATEGORIES) {

@@ -102,8 +102,6 @@ router.get("/users/:id", async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     include: {
-      skills: true,
-      tools: true,
       memberships: { include: { group: true } },
       reportsReceived: { include: { reporter: true } },
       reportsMade: true,
@@ -121,8 +119,6 @@ router.get("/users/:id", async (req, res) => {
     status: user.status,
     subscriptionTier: user.subscriptionTier,
     createdAt: user.createdAt,
-    skills: user.skills.map((s) => s.label),
-    tools: user.tools.map((t) => t.label),
     groups: user.memberships.map((m) => ({ id: m.group.id, name: m.group.name, state: m.group.state, isLeader: m.isLeader })),
     reportsReceived: user.reportsReceived.map((r) => ({
       id: r.id,
@@ -246,6 +242,30 @@ router.patch("/job-categories/:id", async (req, res) => {
   const category = await prisma.jobCategory.update({ where: { id: req.params.id }, data: parsed.data });
   await logAdminAction(req.adminId!, "UPDATE_CATEGORY", "JobCategory", category.id, JSON.stringify(parsed.data));
   res.json(category);
+});
+
+// ---------- Broadcast announcements ----------
+
+const broadcastSchema = z.object({
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(2000),
+});
+
+router.post("/broadcast", async (req, res) => {
+  const parsed = broadcastSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const users = await prisma.user.findMany({ where: { status: "ACTIVE" }, select: { id: true } });
+  await prisma.notification.createMany({
+    data: users.map((u) => ({
+      userId: u.id,
+      type: "ANNOUNCEMENT",
+      payload: JSON.stringify({ title: parsed.data.title, body: parsed.data.body }),
+    })),
+  });
+
+  await logAdminAction(req.adminId!, "BROADCAST_SENT", "User", undefined, `"${parsed.data.title}" to ${users.length} users`);
+  res.json({ ok: true, recipientCount: users.length });
 });
 
 // ---------- Audit log (8.11) ----------

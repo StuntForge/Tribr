@@ -1,9 +1,12 @@
 import React, { useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createGroup } from "../../api/groups";
 import { getJobCategories, getMyTasks } from "../../api/tasks";
-import { colors, spacing } from "../../theme";
+import TaskSelectRow from "../../components/TaskSelectRow";
+import { colors, radii, spacing } from "../../theme";
 
 const SIZE_PRESETS: { label: string; min: number; max: number }[] = [
   { label: "3–4", min: 3, max: 4 },
@@ -11,20 +14,33 @@ const SIZE_PRESETS: { label: string; min: number; max: number }[] = [
   { label: "6–8", min: 6, max: 8 },
 ];
 
+const RATING_OPTIONS = [null, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+const AGE_OPTIONS: (number | null)[] = [null, ...Array.from({ length: 99 - 18 + 1 }, (_, i) => 18 + i)];
+
 export default function CreateGroupScreen({ route, navigation }: any) {
   const blocked = Boolean(route.params?.blocked);
   const queryClient = useQueryClient();
 
   const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories, enabled: !blocked });
   const { data: tasks } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks, enabled: !blocked });
-  const availableTasks = tasks?.filter((t) => t.status === "AVAILABLE") ?? [];
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [sizePreset, setSizePreset] = useState(SIZE_PRESETS[0]);
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [minRating, setMinRating] = useState<number | null>(null);
+  const [ageMin, setAgeMin] = useState<number | null>(null);
+  const [ageMax, setAgeMax] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const toggleCategory = (id: string) => {
+    setCategoryIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
+    setTaskId(null);
+  };
+
+  const availableTasks = (tasks ?? []).filter((t) => t.status === "AVAILABLE" && categoryIds.includes(t.category.id));
 
   const mutation = useMutation({
     mutationFn: createGroup,
@@ -55,20 +71,34 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   const onSubmit = () => {
     if (!name.trim()) return setError("Give the group a name.");
     if (!description.trim()) return setError("Add a short description.");
+    if (categoryIds.length === 0) return setError("Choose at least one allowed category.");
     if (!taskId) return setError("Choose one of your available tasks to represent you.");
+    if (ageMin != null && ageMax != null && ageMin > ageMax) {
+      return setError("Minimum age can't be greater than the maximum.");
+    }
     setError(null);
     mutation.mutate({
       name: name.trim(),
       description: description.trim(),
-      categoryId: categoryId ?? undefined,
+      categoryIds,
       sizeMin: sizePreset.min,
       sizeMax: sizePreset.max,
       taskId,
+      verifiedOnly,
+      minRating: minRating ?? undefined,
+      preferredAgeMin: ageMin ?? undefined,
+      preferredAgeMax: ageMax ?? undefined,
     });
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      enableOnAndroid
+      extraScrollHeight={24}
+    >
       <Text style={styles.label}>Group name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Bristol Garden Crew" />
 
@@ -81,15 +111,16 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         multiline
       />
 
-      <Text style={styles.label}>Job category (optional)</Text>
+      <Text style={styles.label}>Allowed categories</Text>
+      <Text style={styles.hint}>Members can only join (or be invited) with a task in one of these categories.</Text>
       <View style={styles.chipRow}>
         {categories?.map((c) => (
           <TouchableOpacity
             key={c.id}
-            style={[styles.chip, categoryId === c.id && styles.chipSelected]}
-            onPress={() => setCategoryId(categoryId === c.id ? null : c.id)}
+            style={[styles.chip, categoryIds.includes(c.id) && styles.chipSelected]}
+            onPress={() => toggleCategory(c.id)}
           >
-            <Text style={[styles.chipText, categoryId === c.id && styles.chipTextSelected]}>{c.name}</Text>
+            <Text style={[styles.chipText, categoryIds.includes(c.id) && styles.chipTextSelected]}>{c.name}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -109,19 +140,46 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         ))}
       </View>
 
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Verified members only</Text>
+          <Text style={styles.hint}>Only members who've completed at least one cycle before can apply.</Text>
+        </View>
+        <Switch value={verifiedOnly} onValueChange={setVerifiedOnly} trackColor={{ true: colors.primary }} />
+      </View>
+
+      <Text style={styles.label}>Minimum rating to apply</Text>
+      <View style={styles.chipRow}>
+        {RATING_OPTIONS.map((r) => (
+          <TouchableOpacity
+            key={r ?? "any"}
+            style={[styles.chip, minRating === r && styles.chipSelected]}
+            onPress={() => setMinRating(r)}
+          >
+            <Text style={[styles.chipText, minRating === r && styles.chipTextSelected]}>{r == null ? "Any" : `${r.toFixed(1)}★`}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.label}>Preferred age range</Text>
+      <Text style={styles.hint}>Only people within this range will see or be able to join this group.</Text>
+      <View style={styles.ageRow}>
+        <AgeSelect label="Min age" value={ageMin} onChange={setAgeMin} />
+        <Text style={styles.ageSeparator}>–</Text>
+        <AgeSelect label="Max age" value={ageMax} onChange={setAgeMax} />
+      </View>
+
       <Text style={styles.label}>Your task for this group</Text>
-      {availableTasks.length === 0 ? (
-        <Text style={styles.hint}>You don't have an available task. Add one from your Task Library first.</Text>
+      {categoryIds.length === 0 ? (
+        <Text style={styles.hint}>Choose at least one allowed category first.</Text>
+      ) : availableTasks.length === 0 ? (
+        <Text style={styles.hint}>
+          You don't have an available task in an allowed category. Add one from your Task Library first.
+        </Text>
       ) : (
-        <View style={styles.chipRow}>
+        <View>
           {availableTasks.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[styles.chip, taskId === t.id && styles.chipSelected]}
-              onPress={() => setTaskId(t.id)}
-            >
-              <Text style={[styles.chipText, taskId === t.id && styles.chipTextSelected]}>{t.name}</Text>
-            </TouchableOpacity>
+            <TaskSelectRow key={t.id} task={t} selected={taskId === t.id} onSelect={() => setTaskId(t.id)} navigation={navigation} />
           ))}
         </View>
       )}
@@ -131,7 +189,44 @@ export default function CreateGroupScreen({ route, navigation }: any) {
       <TouchableOpacity style={styles.primaryButton} onPress={onSubmit} disabled={mutation.isPending}>
         {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create group</Text>}
       </TouchableOpacity>
-    </ScrollView>
+    </KeyboardAwareScrollView>
+  );
+}
+
+function AgeSelect({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TouchableOpacity style={styles.ageSelectButton} onPress={() => setOpen(true)}>
+        <Text style={styles.ageSelectText}>
+          {label}: {value ?? "Any"}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.pickerTitle}>{label}</Text>
+            <FlatList
+              data={AGE_OPTIONS}
+              keyExtractor={(n) => String(n)}
+              style={styles.pickerList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerRow}
+                  onPress={() => {
+                    onChange(item);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={[styles.pickerRowText, item === value && styles.pickerRowTextSelected]}>{item ?? "Any"}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
   );
 }
 
@@ -142,7 +237,7 @@ const styles = StyleSheet.create({
   blockedBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
   content: { padding: spacing.lg, paddingBottom: spacing.xl },
   label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
-  hint: { fontSize: 12, color: colors.textMuted },
+  hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -164,6 +259,28 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.text, fontSize: 13 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },
+  switchRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, gap: spacing.sm },
+  ageRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  ageSeparator: { color: colors.textMuted },
+  ageSelectButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  ageSelectText: { fontSize: 14, color: colors.text },
+  pickerBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, padding: spacing.lg, maxHeight: "60%" },
+  pickerTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
+  pickerList: { maxHeight: 320 },
+  pickerRow: { paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  pickerRowText: { fontSize: 15, color: colors.text },
+  pickerRowTextSelected: { color: colors.primary, fontWeight: "700" },
   error: { color: colors.danger, marginTop: spacing.md },
   primaryButton: { backgroundColor: colors.primary, borderRadius: 10, padding: spacing.md, alignItems: "center", marginTop: spacing.lg },
   primaryButtonText: { color: "#fff", fontWeight: "600" },

@@ -1,25 +1,30 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ProfileScreen from "../screens/ProfileScreen";
-import TaskLibraryScreen from "../screens/tasks/TaskLibraryScreen";
-import CreateEditTaskScreen from "../screens/tasks/CreateEditTaskScreen";
 import SubscriptionScreen from "../screens/SubscriptionScreen";
 import AccountSettingsScreen from "../screens/AccountSettingsScreen";
 import EditProfileScreen from "../screens/EditProfileScreen";
-import ChangePhoneScreen from "../screens/ChangePhoneScreen";
+import FavouritesScreen from "../screens/groups/FavouritesScreen";
+import BlockedUsersScreen from "../screens/BlockedUsersScreen";
+import { colors } from "../theme";
 
 const Stack = createNativeStackNavigator();
 
 export default function ProfileStack() {
   return (
-    <Stack.Navigator>
-      <Stack.Screen name="ProfileHome" component={ProfileScreen} options={{ title: "Profile" }} />
-      <Stack.Screen name="TaskLibrary" component={TaskLibraryScreen} options={{ title: "My Tasks" }} />
-      <Stack.Screen name="CreateEditTask" component={CreateEditTaskScreen} options={{ title: "Task" }} />
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.primary },
+        headerTintColor: "#fff",
+        headerTitleStyle: { fontWeight: "700" },
+      }}
+    >
+      <Stack.Screen name="ProfileHome" component={ProfileScreen} options={{ title: "Settings" }} />
       <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{ title: "Subscription" }} />
       <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} options={{ title: "Account Settings" }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />
-      <Stack.Screen name="ChangePhone" component={ChangePhoneScreen} options={{ title: "Change Number" }} />
+      <Stack.Screen name="Favourites" component={FavouritesScreen} options={{ title: "Favourites" }} />
+      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ title: "Blocked Users" }} />
     </Stack.Navigator>
   );
 }

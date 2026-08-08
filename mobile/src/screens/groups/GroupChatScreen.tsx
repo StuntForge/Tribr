@@ -1,15 +1,7 @@
 import React, { useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { ChatMessage, getMessages, sendMessage } from "../../api/chat";
@@ -23,6 +15,20 @@ export default function GroupChatScreen({ route }: any) {
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const listRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets();
+
+  // useAnimatedKeyboard reads the real native inset for the keyboard (via
+  // Reanimated's own bridge, not RN's legacy Keyboard module), which is what
+  // actually stays reliable on edge-to-edge Android (mandatory since Android
+  // 15) - the plain `Keyboard.addListener` approach tried before this did
+  // not. insets.bottom is added on top permanently (not just while the
+  // keyboard is up) because the tab bar - which used to be what kept this
+  // screen's content clear of the on-screen Android nav buttons - is hidden
+  // while chatting, so nothing else reserves that space anymore.
+  const keyboard = useAnimatedKeyboard();
+  const animatedStyle = useAnimatedStyle(() => ({
+    paddingBottom: keyboard.height.value + insets.bottom,
+  }));
 
   const { data: messages, isLoading } = useQuery({
     queryKey: ["messages", groupId],
@@ -62,9 +68,10 @@ export default function GroupChatScreen({ route }: any) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <Animated.View style={[styles.container, animatedStyle]}>
       <FlatList
         ref={listRef}
+        style={styles.list}
         data={messages}
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.listContent}
@@ -91,7 +98,7 @@ export default function GroupChatScreen({ route }: any) {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </Animated.View>
   );
 }
 
@@ -116,6 +123,7 @@ function MessageBubble({ message, isMine }: { message: ChatMessage; isMine: bool
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  list: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   listContent: { padding: spacing.lg, paddingBottom: spacing.md, flexGrow: 1 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
@@ -130,7 +138,7 @@ const styles = StyleSheet.create({
   messageText: { fontSize: 14, color: colors.text },
   messageTextMine: { color: "#fff" },
   photoPlaceholder: { fontSize: 12, color: colors.textMuted, fontStyle: "italic" },
-  inputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  inputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background },
   photoButton: { padding: spacing.sm },
   photoButtonText: { fontSize: 20 },
   input: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },

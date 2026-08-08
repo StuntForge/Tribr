@@ -15,7 +15,19 @@ export interface DateOptionInfo {
 
 export interface ScheduleInfo {
   isOwner: boolean;
-  proposal: { id: string; options: DateOptionInfo[] } | null;
+  // The window (inclusive, "YYYY-MM-DD") dates can be proposed in - anchored
+  // to when this task became active, not to today.
+  windowStart: string;
+  windowEnd: string;
+  proposal: {
+    id: string;
+    revisionUsed: boolean;
+    mySubmitted: boolean;
+    allSubmitted: boolean;
+    requiredSubmitterCount: number;
+    submittedCount: number;
+    options: DateOptionInfo[];
+  } | null;
   workDay: {
     confirmedDate: string;
     allDay: boolean;
@@ -48,6 +60,19 @@ export function respondAvailability(groupId: string, taskId: string, dateOptionI
   return apiFetch<{ ok: true }>(`/api/groups/${groupId}/tasks/${taskId}/availability-responses`, {
     method: "POST",
     body: { dateOptionId, available },
+  });
+}
+
+export function submitAvailability(groupId: string, taskId: string) {
+  return apiFetch<{ ok: true; allSubmitted: boolean }>(`/api/groups/${groupId}/tasks/${taskId}/availability-submit`, {
+    method: "POST",
+  });
+}
+
+export function reviseDates(groupId: string, taskId: string, options: ProposeDateOption[]) {
+  return apiFetch<{ ok: true }>(`/api/groups/${groupId}/tasks/${taskId}/availability-revise`, {
+    method: "POST",
+    body: { options },
   });
 }
 

@@ -5,7 +5,16 @@ export interface JobCategory {
   name: string;
 }
 
-export type TaskStatus = "DRAFT" | "AVAILABLE" | "SUBMITTED" | "APPROVED" | "ACTIVE" | "COMPLETED" | "ARCHIVED" | "FORGONE";
+export type TaskStatus =
+  | "DRAFT"
+  | "AVAILABLE"
+  | "SUBMITTED"
+  | "APPROVED"
+  | "ACTIVE"
+  | "COMPLETED"
+  | "ARCHIVED"
+  | "FORGONE"
+  | "USER_ARCHIVED";
 
 export interface Task {
   id: string;
@@ -38,6 +47,23 @@ export function getTask(id: string) {
   return apiFetch<Task>(`/api/tasks/${id}`);
 }
 
+export interface PublicTask {
+  id: string;
+  name: string;
+  category: JobCategory;
+  description: string;
+  estimatedManHours: number;
+  locationLabel: string | null;
+  status: TaskStatus;
+  photos: { id: string; url: string }[];
+  ownerId: string;
+  ownerFirstName: string | null;
+}
+
+export function getPublicTask(id: string) {
+  return apiFetch<PublicTask>(`/api/tasks/${id}/public`);
+}
+
 export type TaskLocationInput =
   | { type: "HOME" }
   | { type: "CHOOSE"; label: string; lat?: number; lng?: number; exactAddress?: string };
@@ -62,6 +88,14 @@ export function updateTask(id: string, input: Partial<TaskInput>) {
 
 export function publishTask(id: string) {
   return apiFetch<Task>(`/api/tasks/${id}/publish`, { method: "POST" });
+}
+
+export function archiveTask(id: string) {
+  return apiFetch<Task>(`/api/tasks/${id}/archive`, { method: "POST" });
+}
+
+export function activateTask(id: string) {
+  return apiFetch<Task>(`/api/tasks/${id}/activate`, { method: "POST" });
 }
 
 export function deleteTask(id: string) {

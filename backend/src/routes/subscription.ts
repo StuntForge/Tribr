@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { getStripe, stripeConfigured } from "../services/stripe";
+import { enforceFreeTaskLimit } from "./tasks";
 
 const router = Router();
 router.use(requireAuth);
@@ -125,6 +126,7 @@ async function applySubscriptionState(
     },
   });
   await prisma.user.update({ where: { id: userId }, data: { subscriptionTier: active ? "SUBSCRIBER" : "FREE" } });
+  await enforceFreeTaskLimit(userId);
 }
 
 export default router;

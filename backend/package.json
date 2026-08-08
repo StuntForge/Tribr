@@ -12,6 +12,11 @@
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
     "seed:admin": "tsx scripts/seedAdmin.ts",
+    "seed:demo": "tsx scripts/seedDemo.ts",
+    "seed:expand": "tsx scripts/seedDemoExpansion.ts",
+    "seed:rob-invites": "tsx scripts/seedRobInvitations.ts",
+    "seed:rob-history": "tsx scripts/seedRobHistory.ts",
+    "migrate:categories": "tsx scripts/migrateCategories.ts",
     "stripe:setup": "tsx scripts/stripeSetup.ts"
   },
   "dependencies": {

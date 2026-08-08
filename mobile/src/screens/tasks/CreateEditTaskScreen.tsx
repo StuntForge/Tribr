@@ -3,18 +3,20 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  activateTask,
   addTaskPhoto,
+  archiveTask,
   createTask,
   deleteTask,
   getJobCategories,
@@ -49,6 +51,12 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Photos picked before a brand-new task exists yet - uploaded to storage
+  // immediately (so they can be previewed) but only linked to the task once
+  // it's actually created on Publish. Keeps "no task ever left half-created"
+  // true without needing a draft row to attach them to in the meantime.
+  const [pendingPhotos, setPendingPhotos] = useState<{ localUri: string; url: string }[]>([]);
 
   useEffect(() => {
     if (existingTask) {
@@ -69,10 +77,6 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
 
   const createMutation = useMutation({
     mutationFn: createTask,
-    onSuccess: (task) => {
-      invalidate();
-      navigation.replace("CreateEditTask", { taskId: task.id });
-    },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
@@ -86,12 +90,10 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
+  // Only still relevant for tasks created before drafts were removed from
+  // the create flow - lets an old draft still be finished off normally.
   const publishMutation = useMutation({
     mutationFn: () => publishTask(taskId!),
-    onSuccess: () => {
-      invalidate();
-      navigation.goBack();
-    },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
@@ -104,14 +106,27 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
-  const addPhotoMutation = useMutation({
-    mutationFn: (url: string) => addTaskPhoto(taskId!, url),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks", taskId] }),
-  });
-
   const removePhotoMutation = useMutation({
     mutationFn: (photoId: string) => removeTaskPhoto(taskId!, photoId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks", taskId] }),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveTask(taskId!),
+    onSuccess: () => {
+      invalidate();
+      navigation.goBack();
+    },
+    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: () => activateTask(taskId!),
+    onSuccess: () => {
+      invalidate();
+      navigation.goBack();
+    },
+    onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
   const useCurrentLocation = async () => {
@@ -138,11 +153,10 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     }
   };
 
+  const MAX_PHOTOS = 4;
+  const photoCount = taskId ? existingTask?.photos.length ?? 0 : pendingPhotos.length;
+
   const pickAndUploadPhoto = async () => {
-    if (!taskId) {
-      setError("Save the task first, then you can add photos.");
-      return;
-    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setError("Photo library access is needed to add photos.");
@@ -152,13 +166,21 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
     });
-    if (!result.canceled && result.assets[0]) {
-      try {
-        const { url } = await uploadPhoto(result.assets[0].uri);
-        addPhotoMutation.mutate(url);
-      } catch (e: any) {
-        setError(e.message ?? "Could not upload photo.");
+    if (result.canceled || !result.assets[0]) return;
+
+    setUploadingPhoto(true);
+    try {
+      const { url } = await uploadPhoto(result.assets[0].uri);
+      if (taskId) {
+        await addTaskPhoto(taskId, url);
+        queryClient.invalidateQueries({ queryKey: ["tasks", taskId] });
+      } else {
+        setPendingPhotos((prev) => [...prev, { localUri: result.assets[0].uri, url }]);
       }
+    } catch (e: any) {
+      setError(e.message ?? "Could not upload photo.");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -190,22 +212,31 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     };
   };
 
-  const onSaveDraft = () => {
-    const input = buildInput();
-    if (!input) return;
-    if (taskId) updateMutation.mutate(input);
-    else createMutation.mutate({ ...input, isDraft: true });
-  };
+  const [publishing, setPublishing] = useState(false);
 
-  const onPublish = () => {
+  const onPublish = async () => {
     const input = buildInput();
     if (!input) return;
-    if (taskId && existingTask?.status !== "DRAFT") {
-      updateMutation.mutate(input);
-    } else if (taskId) {
-      updateMutation.mutate(input, { onSuccess: () => publishMutation.mutate() });
-    } else {
-      createMutation.mutate(input);
+    setPublishing(true);
+    try {
+      if (!taskId) {
+        const created = await createMutation.mutateAsync(input);
+        for (const photo of pendingPhotos) {
+          await addTaskPhoto(created.id, photo.url);
+        }
+        invalidate();
+        navigation.goBack();
+        return;
+      }
+
+      await updateMutation.mutateAsync(input);
+      if (existingTask?.status === "DRAFT") {
+        await publishMutation.mutateAsync();
+      }
+    } catch {
+      // Errors are already surfaced via each mutation's onError -> setError.
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -216,8 +247,22 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     ]);
   };
 
+  const confirmArchive = () => {
+    Alert.alert(
+      "Archive this task?",
+      "It'll be shelved out of your active tasks and won't count toward your task limit. You can activate it again any time.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Archive", onPress: () => archiveMutation.mutate() },
+      ]
+    );
+  };
+
+  const isArchived = existingTask?.status === "USER_ARCHIVED";
+  const isAvailable = existingTask?.status === "AVAILABLE";
+
   const busy =
-    createMutation.isPending || updateMutation.isPending || publishMutation.isPending || deleteMutation.isPending;
+    publishing || deleteMutation.isPending || uploadingPhoto || archiveMutation.isPending || activateMutation.isPending;
 
   if (taskId && loadingTask) {
     return (
@@ -228,7 +273,22 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      enableOnAndroid
+      extraScrollHeight={24}
+    >
+      {isArchived && (
+        <View style={styles.archivedBanner}>
+          <Text style={styles.archivedBannerText}>
+            This task is archived. Activate it to make it available and edit it again.
+          </Text>
+        </View>
+      )}
+
+      <View pointerEvents={isArchived ? "none" : "auto"} style={isArchived && styles.readOnlyForm}>
       <Text style={styles.label}>Task name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Repaint the fence" />
 
@@ -308,36 +368,62 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
         multiline
       />
 
-      <Text style={styles.label}>Photos</Text>
+      <Text style={styles.label}>Photos ({photoCount}/{MAX_PHOTOS})</Text>
+      <Text style={styles.hint}>Long-press a photo to remove it.</Text>
       <View style={styles.photoRow}>
-        {existingTask?.photos.map((p) => (
-          <TouchableOpacity key={p.id} onLongPress={() => removePhotoMutation.mutate(p.id)}>
-            <Image source={{ uri: p.url }} style={styles.photo} />
+        {taskId
+          ? existingTask?.photos.map((p) => (
+              <TouchableOpacity key={p.id} onLongPress={() => removePhotoMutation.mutate(p.id)}>
+                <Image source={{ uri: p.url }} style={styles.photo} />
+              </TouchableOpacity>
+            ))
+          : pendingPhotos.map((p, i) => (
+              <TouchableOpacity
+                key={p.url}
+                onLongPress={() => setPendingPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+              >
+                <Image source={{ uri: p.localUri }} style={styles.photo} />
+              </TouchableOpacity>
+            ))}
+        {photoCount < MAX_PHOTOS && (
+          <TouchableOpacity style={styles.photoAdd} onPress={pickAndUploadPhoto} disabled={uploadingPhoto}>
+            {uploadingPhoto ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.photoAddText}>+ Add</Text>}
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={styles.photoAdd} onPress={pickAndUploadPhoto}>
-          <Text style={styles.photoAddText}>+ Add</Text>
-        </TouchableOpacity>
+        )}
       </View>
-      {!taskId && <Text style={styles.hint}>Save the task first, then you can add photos.</Text>}
+      </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={onSaveDraft} disabled={busy}>
-          <Text style={styles.secondaryButtonText}>Save as draft</Text>
+      {isArchived ? (
+        <TouchableOpacity style={styles.primaryButton} onPress={() => activateMutation.mutate()} disabled={busy}>
+          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Activate task</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.primaryButton} onPress={onPublish} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Publish task</Text>}
+      ) : (
+        <View style={styles.actions}>
+          {!taskId && (
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.goBack()} disabled={busy}>
+              <Text style={styles.secondaryButtonText}>Discard</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.primaryButton} onPress={onPublish} disabled={busy}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{taskId ? "Save changes" : "Publish task"}</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {taskId && isAvailable && (
+        <TouchableOpacity style={styles.archiveButton} onPress={confirmArchive} disabled={busy}>
+          <Text style={styles.archiveButtonText}>Archive task</Text>
         </TouchableOpacity>
-      </View>
+      )}
 
       {taskId && !existingTask?.groupId && (
         <TouchableOpacity style={styles.deleteButton} onPress={confirmDelete} disabled={busy}>
           <Text style={styles.deleteButtonText}>Delete task</Text>
         </TouchableOpacity>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -398,4 +484,23 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#fff", fontWeight: "600" },
   deleteButton: { marginTop: spacing.lg, alignItems: "center", padding: spacing.md },
   deleteButtonText: { color: colors.danger, fontWeight: "600" },
+  archiveButton: {
+    marginTop: spacing.md,
+    alignItems: "center",
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    borderRadius: 10,
+  },
+  archiveButtonText: { color: colors.textMuted, fontWeight: "600" },
+  archivedBanner: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  archivedBannerText: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  readOnlyForm: { opacity: 0.55 },
 });

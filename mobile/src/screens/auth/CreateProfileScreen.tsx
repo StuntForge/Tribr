@@ -2,13 +2,13 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { updateMe } from "../../api/profile";
@@ -27,7 +27,6 @@ export default function CreateProfileScreen() {
   const [locationLabel, setLocationLabel] = useState("");
   const [locationLat, setLocationLat] = useState<number | undefined>(undefined);
   const [locationLng, setLocationLng] = useState<number | undefined>(undefined);
-  const [homeAddress, setHomeAddress] = useState("");
   const [bio, setBio] = useState("");
   const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -76,7 +75,8 @@ export default function CreateProfileScreen() {
       });
       const place = places[0];
       if (place) {
-        setLocationLabel([place.city, place.region].filter(Boolean).join(", "));
+        const locality = place.city || place.subregion || place.district || place.name;
+        setLocationLabel([locality, place.region].filter(Boolean).join(", "));
       }
     } catch {
       setError("Could not determine your location. You can type it manually instead.");
@@ -109,7 +109,6 @@ export default function CreateProfileScreen() {
         locationLabel: locationLabel.trim(),
         locationLat,
         locationLng,
-        homeAddress: homeAddress.trim() || undefined,
         bio: bio.trim(),
         profilePhotoUrl: photoUrl!,
       });
@@ -122,7 +121,13 @@ export default function CreateProfileScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      enableOnAndroid
+      extraScrollHeight={24}
+    >
       <Text style={styles.title}>Create your profile</Text>
       <Text style={styles.subtitle}>
         This builds the trust every group relies on. Your exact address is never shown to anyone.
@@ -140,9 +145,11 @@ export default function CreateProfileScreen() {
       <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="Alex" />
 
       <Text style={styles.label}>Age</Text>
+      <Text style={styles.hint}>Must be accurate - this can't be changed once your account is created.</Text>
       <TextInput style={styles.input} value={age} onChangeText={setAge} placeholder="35" keyboardType="number-pad" />
 
       <Text style={styles.label}>Gender</Text>
+      <Text style={styles.hint}>This can't be changed once your account is created.</Text>
       <View style={styles.chipRow}>
         {GENDER_OPTIONS.map((option) => (
           <TouchableOpacity
@@ -170,17 +177,6 @@ export default function CreateProfileScreen() {
         )}
       </TouchableOpacity>
 
-      <Text style={styles.label}>Home address (optional, private)</Text>
-      <Text style={styles.hint}>
-        Only shared with your group, for a task at your home, once a work date is confirmed. Never shown publicly.
-      </Text>
-      <TextInput
-        style={styles.input}
-        value={homeAddress}
-        onChangeText={setHomeAddress}
-        placeholder="12 Example Street, Bristol, BS1 1AA"
-      />
-
       <Text style={styles.label}>Biography</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
@@ -200,7 +196,7 @@ export default function CreateProfileScreen() {
       >
         {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Finish profile</Text>}
       </TouchableOpacity>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

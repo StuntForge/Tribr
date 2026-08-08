@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { Calendar } from "react-native-calendars";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import * as Calendar from "expo-calendar";
+import * as ExpoCalendar from "expo-calendar";
 import {
   confirmWorkDay,
   DateOptionInfo,
@@ -10,14 +10,66 @@ import {
   ProposeDateOption,
   proposeDates,
   respondAvailability,
+  reviseDates,
   ScheduleInfo,
+  submitAvailability,
 } from "../../api/schedule";
-import { colors, spacing } from "../../theme";
+import { colors, radii, spacing } from "../../theme";
+
+function toDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// Calendar cells give us plain "YYYY-MM-DD" strings - build the Date at
+// local noon so a UTC round-trip (toISOString) can never drift it a day.
+function dateStringToISO(dateString: string): string {
+  const [y, m, d] = dateString.split("-").map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0).toISOString();
+}
+
+function formatDateLabel(dateString: string): string {
+  const [y, m, d] = dateString.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+function formatTime12h(t: string): string {
+  const [h, m] = t.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+const TIME_OPTIONS: string[] = (() => {
+  const times: string[] = [];
+  for (let h = 7; h <= 19; h++) {
+    for (const m of [0, 30]) {
+      if (h === 19 && m === 30) continue;
+      times.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  return times;
+})();
+
+const calendarTheme = {
+  todayTextColor: colors.primary,
+  selectedDayBackgroundColor: colors.primary,
+  arrowColor: colors.primary,
+  monthTextColor: colors.text,
+  textSectionTitleColor: colors.textMuted,
+  dayTextColor: colors.text,
+  textDisabledColor: colors.border,
+  backgroundColor: colors.surface,
+  calendarBackground: colors.surface,
+};
 
 export default function TaskScheduleScreen({ route }: any) {
   const { groupId, taskId, taskName } = route.params as { groupId: string; taskId: string; taskName: string };
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [revising, setRevising] = useState(false);
 
   const { data: schedule, isLoading } = useQuery({
     queryKey: ["schedule", groupId, taskId],
@@ -29,6 +81,12 @@ export default function TaskScheduleScreen({ route }: any) {
   const respondMutation = useMutation({
     mutationFn: ({ dateOptionId, available }: { dateOptionId: string; available: boolean }) =>
       respondAvailability(groupId, taskId, dateOptionId, available),
+    onSuccess: invalidate,
+    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: () => submitAvailability(groupId, taskId),
     onSuccess: invalidate,
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
@@ -46,6 +104,15 @@ export default function TaskScheduleScreen({ route }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
+  const reviseMutation = useMutation({
+    mutationFn: (options: ProposeDateOption[]) => reviseDates(groupId, taskId, options),
+    onSuccess: () => {
+      setRevising(false);
+      invalidate();
+    },
+    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+  });
+
   if (isLoading || !schedule) {
     return (
       <View style={styles.center}>
@@ -54,29 +121,97 @@ export default function TaskScheduleScreen({ route }: any) {
     );
   }
 
+  const confirmRevise = () => {
+    Alert.alert(
+      "Add more dates?",
+      "This is your one-time revision for this task - once you send it back to the group, you won't be able to add more dates again.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Add dates", onPress: () => setRevising(true) },
+      ]
+    );
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{taskName}</Text>
 
       {schedule.workDay ? (
         <ConfirmedView workDay={schedule.workDay} taskName={taskName} />
-      ) : (
-        <>
-          {schedule.proposal && (
-            <DateOptionsList
-              options={schedule.proposal.options}
-              isOwner={schedule.isOwner}
-              onRespond={(id, available) => respondMutation.mutate({ dateOptionId: id, available })}
-              onConfirm={(id, food) => confirmMutation.mutate({ dateOptionId: id, foodProvided: food })}
+      ) : schedule.isOwner ? (
+        revising ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Add more dates</Text>
+            <Text style={styles.hint}>This is a one-time revision. Once sent, the group resubmits their availability.</Text>
+            <OwnerCalendarPicker
+              existingDates={schedule.proposal!.options.map((o) => toDateString(new Date(o.date)))}
+              windowStart={schedule.windowStart}
+              windowEnd={schedule.windowEnd}
+              busy={reviseMutation.isPending}
+              submitLabel="Send revised dates to group"
+              onSubmit={(options) => reviseMutation.mutate(options)}
             />
-          )}
-          {schedule.isOwner && (
-            <ProposeForm busy={proposeMutation.isPending} onSubmit={(options) => proposeMutation.mutate(options)} />
-          )}
-          {!schedule.isOwner && !schedule.proposal && (
-            <Text style={styles.hint}>Waiting for the task owner to propose some dates.</Text>
-          )}
-        </>
+            <TouchableOpacity style={styles.linkButton} onPress={() => setRevising(false)}>
+              <Text style={styles.linkButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : !schedule.proposal ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Propose work dates</Text>
+            <Text style={styles.hint}>
+              Tap days on the calendar (dates outside your 2-week window are greyed out) and set a start time for
+              each. If nothing's arranged before the window closes, this task is forfeited to the next person.
+            </Text>
+            <OwnerCalendarPicker
+              existingDates={[]}
+              windowStart={schedule.windowStart}
+              windowEnd={schedule.windowEnd}
+              busy={proposeMutation.isPending}
+              submitLabel="Send to group"
+              onSubmit={(options) => proposeMutation.mutate(options)}
+            />
+          </View>
+        ) : (
+          <OwnerReviewView
+            proposal={schedule.proposal}
+            onConfirm={(id, food) => confirmMutation.mutate({ dateOptionId: id, foodProvided: food })}
+            onRevise={confirmRevise}
+          />
+        )
+      ) : !schedule.proposal ? (
+        <Text style={styles.hint}>Waiting for the task owner to propose some dates.</Text>
+      ) : schedule.proposal.mySubmitted ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your availability</Text>
+          <Text style={styles.hint}>You've submitted your availability. Waiting on the task owner to confirm a date.</Text>
+          {schedule.proposal.options.map((option) => (
+            <View key={option.id} style={styles.submittedRow}>
+              <Text style={styles.optionDate}>
+                {formatDateLabel(toDateString(new Date(option.date)))} {option.startTime ? formatTime12h(option.startTime) : ""}
+              </Text>
+              <Text style={[styles.responseTag, option.myResponse ? styles.responseTagYes : styles.responseTagNo]}>
+                {option.myResponse ? "Available" : "Can't make it"}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <MemberRespondView
+          options={schedule.proposal.options}
+          onToggle={(id, available) => respondMutation.mutate({ dateOptionId: id, available })}
+          onSubmit={() => {
+            const unanswered = schedule.proposal!.options.filter((o) => o.myResponse == null);
+            if (unanswered.length > 0) {
+              Alert.alert(
+                "Respond to every date",
+                "Let the group know your availability for each proposed date before submitting.",
+              );
+              return;
+            }
+            submitMutation.mutate();
+          }}
+          busy={submitMutation.isPending}
+        />
       )}
 
       {error && <Text style={styles.error}>{error}</Text>}
@@ -93,20 +228,20 @@ function ConfirmedView({
 }) {
   const dateLabel = workDay.allDay
     ? new Date(workDay.confirmedDate).toDateString()
-    : `${new Date(workDay.confirmedDate).toDateString()} ${workDay.startTime}–${workDay.endTime}`;
+    : `${new Date(workDay.confirmedDate).toDateString()} ${workDay.startTime}`;
 
   const addToCalendar = async () => {
     try {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
+      const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
       if (status !== "granted") return;
-      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
       const defaultCalendar = calendars.find((c) => c.allowsModifications) ?? calendars[0];
       if (!defaultCalendar) return;
 
       const start = new Date(workDay!.confirmedDate);
       const end = workDay!.allDay ? new Date(start.getTime() + 24 * 60 * 60 * 1000) : new Date(start.getTime() + 2 * 60 * 60 * 1000);
 
-      await Calendar.createEventAsync(defaultCalendar.id, {
+      await ExpoCalendar.createEventAsync(defaultCalendar.id, {
         title: taskName,
         startDate: start,
         endDate: end,
@@ -123,7 +258,7 @@ function ConfirmedView({
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Work day confirmed</Text>
       <Text style={styles.confirmedDate}>{dateLabel}</Text>
-      <Text style={styles.hint}>{workDay!.foodProvided ? "Snacks provided" : "No food provided — bring your own"}</Text>
+      <Text style={styles.hint}>{workDay!.foodProvided ? "Snacks provided" : "No food provided - bring your own"}</Text>
       {workDay!.address ? (
         <Text style={styles.address}>{workDay!.address}</Text>
       ) : (
@@ -136,119 +271,244 @@ function ConfirmedView({
   );
 }
 
-function DateOptionsList({
-  options,
-  isOwner,
-  onRespond,
+function OwnerReviewView({
+  proposal,
   onConfirm,
+  onRevise,
 }: {
-  options: DateOptionInfo[];
-  isOwner: boolean;
-  onRespond: (id: string, available: boolean) => void;
+  proposal: NonNullable<ScheduleInfo["proposal"]>;
   onConfirm: (id: string, foodProvided: boolean) => void;
+  onRevise: () => void;
 }) {
   const [foodByOption, setFoodByOption] = useState<Record<string, boolean>>({});
+  const markedDates: Record<string, any> = {};
+  for (const option of proposal.options) {
+    markedDates[toDateString(new Date(option.date))] = { marked: true, dotColor: colors.primary, disabled: true, disableTouchEvent: true };
+  }
 
   return (
     <View style={styles.section}>
+      <Calendar
+        markedDates={markedDates}
+        current={proposal.options[0] ? toDateString(new Date(proposal.options[0].date)) : undefined}
+        theme={calendarTheme}
+        style={styles.calendar}
+      />
+
+      {!proposal.allSubmitted && (
+        <Text style={styles.hint}>
+          Waiting for {proposal.submittedCount} of {proposal.requiredSubmitterCount} members to respond.
+        </Text>
+      )}
+
       <Text style={styles.sectionTitle}>Proposed dates</Text>
-      {options.map((option) => {
-        const label = option.allDay
-          ? new Date(option.date).toDateString()
-          : `${new Date(option.date).toDateString()} ${option.startTime}–${option.endTime}`;
-        return (
-          <View key={option.id} style={styles.optionCard}>
-            <Text style={styles.optionDate}>{label}</Text>
-            <Text style={styles.hint}>
-              {option.availableCount} available · {option.unavailableCount} unavailable
-            </Text>
-            <View style={styles.actionRow}>
+      {proposal.options.map((option) => (
+        <View key={option.id} style={styles.optionCard}>
+          <Text style={styles.optionDate}>
+            {formatDateLabel(toDateString(new Date(option.date)))} {option.startTime ? formatTime12h(option.startTime) : ""}
+          </Text>
+          <Text style={styles.hint}>
+            {option.availableCount} available · {option.unavailableCount} unavailable
+          </Text>
+
+          {proposal.allSubmitted && (
+            <View style={styles.ownerBox}>
+              {option.dietary && option.dietary.length > 0 && (
+                <Text style={styles.hint}>Dietary needs of available members: {option.dietary.join(", ")}</Text>
+              )}
+              <View style={styles.foodRow}>
+                <Text style={styles.hint}>Provide snacks?</Text>
+                <Switch
+                  value={Boolean(foodByOption[option.id])}
+                  onValueChange={(v) => setFoodByOption((prev) => ({ ...prev, [option.id]: v }))}
+                />
+              </View>
               <TouchableOpacity
-                style={[styles.chip, option.myResponse === true && styles.chipSelected]}
-                onPress={() => onRespond(option.id, true)}
+                style={styles.primaryButtonSmall}
+                onPress={() => onConfirm(option.id, Boolean(foodByOption[option.id]))}
               >
-                <Text style={[styles.chipText, option.myResponse === true && styles.chipTextSelected]}>I'm available</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.chip, option.myResponse === false && styles.chipSelected]}
-                onPress={() => onRespond(option.id, false)}
-              >
-                <Text style={[styles.chipText, option.myResponse === false && styles.chipTextSelected]}>Can't make it</Text>
+                <Text style={styles.primaryButtonText}>Confirm this date</Text>
               </TouchableOpacity>
             </View>
+          )}
+        </View>
+      ))}
 
-            {isOwner && (
-              <View style={styles.ownerBox}>
-                {option.dietary && option.dietary.length > 0 && (
-                  <Text style={styles.hint}>Dietary needs of available members: {option.dietary.join(", ")}</Text>
-                )}
-                <View style={styles.foodRow}>
-                  <Text style={styles.hint}>Provide snacks?</Text>
-                  <Switch
-                    value={Boolean(foodByOption[option.id])}
-                    onValueChange={(v) => setFoodByOption((prev) => ({ ...prev, [option.id]: v }))}
-                  />
-                </View>
-                <TouchableOpacity
-                  style={styles.primaryButtonSmall}
-                  onPress={() => onConfirm(option.id, Boolean(foodByOption[option.id]))}
-                >
-                  <Text style={styles.primaryButtonText}>Confirm this date</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        );
-      })}
+      {proposal.allSubmitted && !proposal.revisionUsed && (
+        <TouchableOpacity style={styles.secondaryButton} onPress={onRevise}>
+          <Text style={styles.secondaryButtonText}>Add more dates instead (one-time revision)</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
-function ProposeForm({ busy, onSubmit }: { busy: boolean; onSubmit: (options: ProposeDateOption[]) => void }) {
-  const [dates, setDates] = useState<Date[]>([new Date(Date.now() + 24 * 60 * 60 * 1000)]);
-  const [pickerIndex, setPickerIndex] = useState<number | null>(null);
+function MemberRespondView({
+  options,
+  onToggle,
+  onSubmit,
+  busy,
+}: {
+  options: DateOptionInfo[];
+  onToggle: (id: string, available: boolean) => void;
+  onSubmit: () => void;
+  busy: boolean;
+}) {
+  const markedDates: Record<string, any> = {};
+  for (const option of options) {
+    const dateString = toDateString(new Date(option.date));
+    const color = option.myResponse === true ? colors.primary : option.myResponse === false ? colors.danger : colors.textMuted;
+    markedDates[dateString] = { marked: true, dotColor: color, selected: option.myResponse != null, selectedColor: color };
+  }
 
-  const addSlot = () => setDates((prev) => [...prev, new Date(Date.now() + 48 * 60 * 60 * 1000)]);
-  const removeSlot = (i: number) => setDates((prev) => prev.filter((_, idx) => idx !== i));
+  const toggle = (option: DateOptionInfo) => onToggle(option.id, !(option.myResponse === true));
+
+  const onDayPress = (day: { dateString: string }) => {
+    const option = options.find((o) => toDateString(new Date(o.date)) === day.dateString);
+    if (option) toggle(option);
+  };
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Propose work dates</Text>
-      <Text style={styles.hint}>Add a few options to maximise attendance.</Text>
-      {dates.map((date, i) => (
-        <View key={i} style={styles.dateRow}>
-          <TouchableOpacity style={styles.dateButton} onPress={() => setPickerIndex(i)}>
-            <Text style={styles.dateButtonText}>{date.toDateString()}</Text>
+      <Text style={styles.sectionTitle}>When can you make it?</Text>
+      <Text style={styles.hint}>Tap a marked date to toggle your availability, then submit.</Text>
+      <Calendar markedDates={markedDates} onDayPress={onDayPress} theme={calendarTheme} style={styles.calendar} />
+
+      {options.map((option) => (
+        <TouchableOpacity key={option.id} style={styles.optionCard} onPress={() => toggle(option)}>
+          <Text style={styles.optionDate}>
+            {formatDateLabel(toDateString(new Date(option.date)))} {option.startTime ? formatTime12h(option.startTime) : ""}
+          </Text>
+          <Text
+            style={[
+              styles.responseTag,
+              option.myResponse === true && styles.responseTagYes,
+              option.myResponse === false && styles.responseTagNo,
+            ]}
+          >
+            {option.myResponse == null ? "Tap to respond" : option.myResponse ? "Available" : "Can't make it"}
+          </Text>
+        </TouchableOpacity>
+      ))}
+
+      <TouchableOpacity style={styles.primaryButtonSmall} onPress={onSubmit} disabled={busy}>
+        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Submit my availability</Text>}
+      </TouchableOpacity>
+      <Text style={styles.hint}>Once submitted you won't be able to change your answers for this round.</Text>
+    </View>
+  );
+}
+
+function OwnerCalendarPicker({
+  existingDates,
+  windowStart,
+  windowEnd,
+  busy,
+  submitLabel,
+  onSubmit,
+}: {
+  existingDates: string[];
+  windowStart: string;
+  windowEnd: string;
+  busy: boolean;
+  submitLabel: string;
+  onSubmit: (options: ProposeDateOption[]) => void;
+}) {
+  const [selected, setSelected] = useState<Record<string, string>>({});
+  const [timePickerFor, setTimePickerFor] = useState<string | null>(null);
+
+  const onDayPress = (day: { dateString: string }) => {
+    if (day.dateString < windowStart || day.dateString > windowEnd) return;
+    if (existingDates.includes(day.dateString)) return;
+    setSelected((prev) => {
+      if (prev[day.dateString]) {
+        const { [day.dateString]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [day.dateString]: "09:00" };
+    });
+    if (!selected[day.dateString]) setTimePickerFor(day.dateString);
+  };
+
+  const removeDate = (dateString: string) =>
+    setSelected((prev) => {
+      const { [dateString]: _removed, ...rest } = prev;
+      return rest;
+    });
+
+  const markedDates: Record<string, any> = {};
+  for (const d of existingDates) {
+    markedDates[d] = { marked: true, dotColor: colors.textMuted, disabled: true, disableTouchEvent: true };
+  }
+  for (const d of Object.keys(selected)) {
+    markedDates[d] = { selected: true, selectedColor: colors.primary };
+  }
+
+  const selectedEntries = Object.entries(selected).sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <View>
+      <Calendar
+        current={windowStart}
+        minDate={windowStart}
+        maxDate={windowEnd}
+        markedDates={markedDates}
+        onDayPress={onDayPress}
+        theme={calendarTheme}
+        style={styles.calendar}
+      />
+
+      {selectedEntries.map(([dateString, time]) => (
+        <View key={dateString} style={styles.dateRow}>
+          <Text style={styles.optionDate}>{formatDateLabel(dateString)}</Text>
+          <TouchableOpacity style={styles.timeButton} onPress={() => setTimePickerFor(dateString)}>
+            <Text style={styles.timeButtonText}>{formatTime12h(time)}</Text>
           </TouchableOpacity>
-          {dates.length > 1 && (
-            <TouchableOpacity onPress={() => removeSlot(i)}>
-              <Text style={styles.removeText}>✕</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={() => removeDate(dateString)}>
+            <Text style={styles.removeText}>✕</Text>
+          </TouchableOpacity>
         </View>
       ))}
-      {pickerIndex !== null && (
-        <DateTimePicker
-          value={dates[pickerIndex]}
-          mode="date"
-          minimumDate={new Date()}
-          onChange={(_, selected) => {
-            if (selected) {
-              setDates((prev) => prev.map((d, idx) => (idx === pickerIndex ? selected : d)));
-            }
-            setPickerIndex(null);
-          }}
-        />
-      )}
-      <TouchableOpacity onPress={addSlot} style={styles.linkButton}>
-        <Text style={styles.linkButtonText}>+ Add another option</Text>
-      </TouchableOpacity>
+
+      <Modal visible={timePickerFor != null} transparent animationType="fade" onRequestClose={() => setTimePickerFor(null)}>
+        <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={() => setTimePickerFor(null)}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.pickerTitle}>Start time</Text>
+            <FlatList
+              data={TIME_OPTIONS}
+              keyExtractor={(t) => t}
+              style={styles.pickerList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerRow}
+                  onPress={() => {
+                    if (timePickerFor) setSelected((prev) => ({ ...prev, [timePickerFor]: item }));
+                    setTimePickerFor(null);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerRowText,
+                      timePickerFor && selected[timePickerFor] === item && styles.pickerRowTextSelected,
+                    ]}
+                  >
+                    {formatTime12h(item)}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <TouchableOpacity
-        style={styles.primaryButtonSmall}
-        disabled={busy}
-        onPress={() => onSubmit(dates.map((d) => ({ date: d.toISOString(), allDay: true })))}
+        style={[styles.primaryButtonSmall, selectedEntries.length === 0 && styles.buttonDisabled]}
+        disabled={selectedEntries.length === 0 || busy}
+        onPress={() =>
+          onSubmit(selectedEntries.map(([dateString, time]) => ({ date: dateStringToISO(dateString), allDay: false, startTime: time })))
+        }
       >
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Propose these dates</Text>}
+        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{submitLabel}</Text>}
       </TouchableOpacity>
     </View>
   );
@@ -264,24 +524,48 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.xs },
   confirmedDate: { fontSize: 16, fontWeight: "600", color: colors.primary, marginTop: spacing.xs },
   address: { fontSize: 14, color: colors.text, marginTop: spacing.sm, fontWeight: "600" },
+  calendar: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    marginBottom: spacing.md,
+    overflow: "hidden",
+  },
   optionCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginBottom: spacing.sm },
   optionDate: { fontSize: 14, fontWeight: "600", color: colors.text },
-  actionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, backgroundColor: colors.background },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { color: colors.text, fontSize: 13 },
-  chipTextSelected: { color: "#fff", fontWeight: "600" },
+  submittedRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  responseTag: { fontSize: 12, fontWeight: "700", color: colors.textMuted, marginTop: spacing.xs },
+  responseTagYes: { color: colors.primary },
+  responseTagNo: { color: colors.danger },
   ownerBox: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   foodRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: spacing.sm },
   dateRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
-  dateButton: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: spacing.sm },
-  dateButtonText: { color: colors.text, fontSize: 14 },
+  timeButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
+  timeButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   removeText: { color: colors.danger, fontSize: 16, paddingHorizontal: spacing.sm },
-  linkButton: { marginBottom: spacing.md },
+  linkButton: { marginTop: spacing.sm },
   linkButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   error: { color: colors.danger, marginTop: spacing.md },
-  primaryButtonSmall: { backgroundColor: colors.primary, borderRadius: 10, padding: spacing.sm, alignItems: "center" },
+  primaryButtonSmall: { backgroundColor: colors.primary, borderRadius: 10, padding: spacing.sm, alignItems: "center", marginTop: spacing.sm },
   primaryButtonText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  buttonDisabled: { opacity: 0.5 },
   secondaryButton: { borderWidth: 1, borderColor: colors.primary, borderRadius: 10, padding: spacing.sm, alignItems: "center", marginTop: spacing.md },
   secondaryButtonText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+  pickerBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, padding: spacing.lg, maxHeight: "70%" },
+  pickerTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
+  pickerList: { maxHeight: 320 },
+  pickerRow: { paddingVertical: spacing.sm },
+  pickerRowText: { fontSize: 15, color: colors.text },
+  pickerRowTextSelected: { color: colors.primary, fontWeight: "700" },
 });

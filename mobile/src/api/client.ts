@@ -31,6 +31,9 @@ export async function apiFetch<T>(
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
+      // Harmless when API_BASE_URL isn't an ngrok tunnel; skips ngrok's
+      // browser-warning interstitial page when it is.
+      "ngrok-skip-browser-warning": "true",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,

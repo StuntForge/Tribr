@@ -22,6 +22,14 @@ router.get("/groups/:id/messages", async (req, res) => {
     take: 200,
   });
 
+  // Viewing the chat marks it read - this is the only place that happens,
+  // so opening the screen (it polls this endpoint) is what clears the badge.
+  await prisma.groupChatRead.upsert({
+    where: { groupId_userId: { groupId: req.params.id, userId: req.userId! } },
+    create: { groupId: req.params.id, userId: req.userId! },
+    update: { lastReadAt: new Date() },
+  });
+
   res.json(
     messages.map((m) => ({
       id: m.id,
@@ -33,6 +41,33 @@ router.get("/groups/:id/messages", async (req, res) => {
       createdAt: m.createdAt,
     }))
   );
+});
+
+// Powers the Groups tab badge and the Home screen's Messages section - one
+// group with 12 unread messages still counts as 1 group with unread messages.
+router.get("/me/unread-messages", async (req, res) => {
+  const memberships = await prisma.groupMember.findMany({
+    where: { userId: req.userId, status: "ACTIVE", group: { state: { notIn: ["DISBANDED"] } } },
+    include: { group: true },
+  });
+  if (memberships.length === 0) return res.json([]);
+
+  const reads = await prisma.groupChatRead.findMany({
+    where: { userId: req.userId, groupId: { in: memberships.map((m) => m.groupId) } },
+  });
+  const readAtByGroup = new Map(reads.map((r) => [r.groupId, r.lastReadAt]));
+
+  const results = [];
+  for (const m of memberships) {
+    const since = readAtByGroup.get(m.groupId) ?? m.joinedAt;
+    const unreadCount = await prisma.groupChatMessage.count({
+      where: { groupId: m.groupId, createdAt: { gt: since }, senderId: { not: req.userId } },
+    });
+    if (unreadCount > 0) {
+      results.push({ groupId: m.groupId, groupName: m.group.name, unreadCount });
+    }
+  }
+  res.json(results);
 });
 
 router.post("/groups/:id/messages", async (req, res) => {

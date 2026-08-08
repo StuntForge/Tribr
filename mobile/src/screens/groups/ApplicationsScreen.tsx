@@ -1,10 +1,14 @@
 import React, { useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAwareFlatList } from "react-native-keyboard-aware-scroll-view";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { decideApplication, Decision, getApplications, PendingApplication } from "../../api/groups";
+import Avatar from "../../components/Avatar";
+import ProBadge from "../../components/ProBadge";
 import { colors, spacing } from "../../theme";
 
-export default function ApplicationsScreen({ route }: any) {
+export default function ApplicationsScreen({ route, navigation }: any) {
   const { groupId } = route.params as { groupId: string };
   const queryClient = useQueryClient();
   const { data: applications, isLoading } = useQuery({
@@ -32,21 +36,24 @@ export default function ApplicationsScreen({ route }: any) {
   }
 
   return (
-    <FlatList
+    <KeyboardAwareFlatList
       style={styles.container}
       contentContainerStyle={styles.listContent}
       data={applications}
-      keyExtractor={(a) => a.id}
+      keyExtractor={(a: PendingApplication) => a.id}
+      keyboardShouldPersistTaps="handled"
+      extraScrollHeight={24}
       ListEmptyComponent={
         <View style={styles.empty}>
           <Text style={styles.emptyBody}>No pending applications.</Text>
         </View>
       }
-      renderItem={({ item }) => (
+      renderItem={({ item }: { item: PendingApplication }) => (
         <ApplicationCard
           application={item}
           busy={decide.isPending}
           onDecide={(decision, reason) => decide.mutate({ appId: item.id, decision, reason })}
+          onPressApplicant={() => navigation.navigate("PublicProfile", { userId: item.applicant.id })}
         />
       )}
     />
@@ -57,16 +64,23 @@ function ApplicationCard({
   application,
   busy,
   onDecide,
+  onPressApplicant,
 }: {
   application: PendingApplication;
   busy: boolean;
   onDecide: (decision: Decision, reason?: string) => void;
+  onPressApplicant: () => void;
 }) {
   const [reason, setReason] = useState("");
 
   return (
     <View style={styles.card}>
-      <Text style={styles.name}>{application.applicant.firstName}</Text>
+      <TouchableOpacity style={styles.identity} onPress={onPressApplicant}>
+        <Avatar name={application.applicant.firstName} photoUrl={null} size={32} />
+        <Text style={styles.name}>{application.applicant.firstName}</Text>
+        {application.applicant.isPro && <ProBadge size="tiny" />}
+        <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+      </TouchableOpacity>
       <Text style={styles.taskLine}>
         {application.task.name} · {application.task.category} · {application.task.estimatedManHours}h
       </Text>
@@ -116,6 +130,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
   },
+  identity: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   name: { fontSize: 15, fontWeight: "700", color: colors.text },
   taskLine: { fontSize: 13, color: colors.text, marginTop: spacing.xs },
   message: { fontSize: 12, color: colors.textMuted, fontStyle: "italic", marginTop: spacing.xs },

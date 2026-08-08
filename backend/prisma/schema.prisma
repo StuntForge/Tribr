@@ -1,12 +1,14 @@
 // Project Exchange - data model
-// Local dev uses SQLite (zero setup). Swap the datasource to postgresql for production.
+// Hosted on Postgres (Neon/Supabase) - DATABASE_URL points at it both for
+// local dev and the deployed backend, so there's one shared database rather
+// than a separate local SQLite file.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -33,6 +35,7 @@ model User {
 
   subscriptionTier  String    @default("FREE") // FREE | SUBSCRIBER
   status            String    @default("ACTIVE") // ACTIVE | SUSPENDED | BANNED | PENDING_DELETION
+  lookingForGroup   Boolean   @default(true)
 
   // hidden reputation seed so new accounts aren't volatile (2.10, 6.11)
   workerSeedApplied Boolean   @default(true)
@@ -42,8 +45,6 @@ model User {
   updatedAt         DateTime  @updatedAt
 
   photos            UserPhoto[]
-  skills            UserSkill[]
-  tools             UserTool[]
   dietary           UserDietary[]
   tasks             Task[]
   ledGroups         Group[]              @relation("GroupLeader")
@@ -54,6 +55,7 @@ model User {
   ratingsReceived   RatingEvent[]        @relation("Ratee")
   notifications     Notification[]
   chatMessages      GroupChatMessage[]
+  chatReads         GroupChatRead[]
   blocksMade        Block[]              @relation("Blocker")
   blocksReceived    Block[]              @relation("Blocked")
   reportsMade       Report[]             @relation("Reporter")
@@ -62,7 +64,11 @@ model User {
   favouritedBy      Favourite[]          @relation("FavouriteTarget")
   subscription      Subscription?
   dissolutionBallots DissolutionBallot[]
+  kickVotesReceived  KickVote[]           @relation("KickTarget")
+  kickVotesStarted   KickVote[]           @relation("KickInitiator")
+  kickBallots        KickBallot[]
   availabilityResponses AvailabilityResponse[]
+  proposalSubmissions   ProposalSubmission[]
 }
 
 model UserPhoto {
@@ -74,29 +80,12 @@ model UserPhoto {
   createdAt DateTime @default(now())
 }
 
-model UserSkill {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  label  String
-
-  @@index([userId])
-}
-
-model UserTool {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  label  String
-
-  @@index([userId])
-}
-
 model UserDietary {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type   String // Vegetarian | Vegan | Gluten Free | Dairy Free | Nut Allergy | Other
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   String // Vegetarian | Vegan | Pescatarian | No Seafood | Lactose Intolerant | Kosher | Halal | Food Allergies
+  detail String? // free-text detail, only used for "Food Allergies"
 
   @@index([userId])
 }
@@ -119,7 +108,7 @@ model JobCategory {
   name      String  @unique
   active    Boolean @default(true)
   tasks     Task[]
-  groups    Group[]
+  allowedInGroups GroupAllowedCategory[]
 }
 
 // ---------- Personal Task System (Chapter 3) ----------
@@ -141,7 +130,10 @@ model Task {
   exactAddress       String?  // never exposed publicly; revealed only after confirmed work day (3.5, 5.6)
   notes              String?
 
-  status             String   @default("AVAILABLE") // DRAFT|AVAILABLE|SUBMITTED|APPROVED|ACTIVE|COMPLETED|ARCHIVED
+  status             String   @default("AVAILABLE") // DRAFT|AVAILABLE|SUBMITTED|APPROVED|ACTIVE|COMPLETED|ARCHIVED|FORGONE|USER_ARCHIVED
+  // 4.9/5.x - when this task most recently became the ACTIVE task in its
+  // queue; anchors the 2-week scheduling window instead of "now".
+  activatedAt        DateTime?
 
   groupId            String?
   group              Group?   @relation(fields: [groupId], references: [id])
@@ -175,8 +167,6 @@ model Group {
   id                String   @id @default(cuid())
   name              String
   description       String
-  categoryId        String?
-  category          JobCategory? @relation(fields: [categoryId], references: [id])
   locationLabel     String?
   locationLat       Float?
   locationLng       Float?
@@ -186,6 +176,10 @@ model Group {
   durationBand      String?
   sizeMin           Int
   sizeMax           Int
+
+  // 10.x - leader-set eligibility gates for who may apply/be invited.
+  verifiedOnly      Boolean  @default(false)
+  minRating         Float?   // 0-5 in 0.5 increments; null = no minimum
 
   leaderId          String
   leader            User     @relation("GroupLeader", fields: [leaderId], references: [id])
@@ -204,9 +198,57 @@ model Group {
   tasks             Task[]
   cycles            GroupCycle[]
   chatMessages      GroupChatMessage[]
+  chatReads         GroupChatRead[]
   dissolutionVotes  DissolutionVote[]
+  kickVotes         KickVote[]
+  allowedCategories GroupAllowedCategory[]
 
   @@index([state])
+}
+
+// Member removal once a group is WORKING - no leader shortcut at that point,
+// it takes every other active member agreeing. Before WORKING, the leader
+// can just remove someone directly (see groups.ts) so this only ever gets
+// created for a group that's already underway.
+model KickVote {
+  id           String   @id @default(cuid())
+  groupId      String
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  targetUserId String
+  target       User     @relation("KickTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  initiatorId  String
+  initiator    User     @relation("KickInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  reason       String
+  outcome      String?  // null while pending, then REMOVED | FAILED
+  createdAt    DateTime @default(now())
+  resolvedAt   DateTime?
+
+  ballots      KickBallot[]
+
+  @@index([groupId])
+}
+
+model KickBallot {
+  id        String   @id @default(cuid())
+  voteId    String
+  vote      KickVote @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  voterId   String
+  voter     User     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  choice    String   // YES | NO
+  createdAt DateTime @default(now())
+
+  @@unique([voteId, voterId])
+}
+
+model GroupAllowedCategory {
+  id         String      @id @default(cuid())
+  groupId    String
+  group      Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   JobCategory @relation(fields: [categoryId], references: [id])
+
+  @@unique([groupId, categoryId])
+  @@index([groupId])
 }
 
 model GroupCycle {
@@ -281,12 +323,29 @@ model GroupInvitation {
 // ---------- Scheduling (Chapter 5) ----------
 
 model AvailabilityProposal {
-  id        String   @id @default(cuid())
-  taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  // 5.3 - the task owner gets exactly one revision (add more dates/times and
+  // re-send to the group) per proposal, made known to them up front.
+  revisionUsed Boolean  @default(false)
 
-  options   DateOption[]
+  options     DateOption[]
+  submissions ProposalSubmission[]
+}
+
+// 5.4 - once a member submits their availability for a proposal it's locked
+// (no more endless editing); presence of a row here is the lock.
+model ProposalSubmission {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    AvailabilityProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submittedAt DateTime @default(now())
+
+  @@unique([proposalId, userId])
 }
 
 model DateOption {
@@ -339,6 +398,17 @@ model GroupChatMessage {
   createdAt DateTime @default(now())
 
   @@index([groupId])
+}
+
+model GroupChatRead {
+  id         String   @id @default(cuid())
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime @default(now())
+
+  @@unique([groupId, userId])
 }
 
 // ---------- Dissolution (4.14) ----------

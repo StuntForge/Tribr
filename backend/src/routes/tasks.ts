@@ -10,11 +10,40 @@ const FREE_TASK_LIMIT = 1;
 const SUBSCRIBER_TASK_LIMIT = 20;
 
 // Tasks that don't count against a user's active-task limit (3.2, 3.7).
-// Drafts aren't yet "maintained" in the sense 3.2 means, and archived tasks are done with.
-const NON_COUNTING_STATUSES = ["ARCHIVED", "DRAFT"];
+// Drafts aren't yet "maintained" in the sense 3.2 means, ARCHIVED tasks are
+// completed and done with, and USER_ARCHIVED tasks were deliberately shelved
+// by the owner.
+const NON_COUNTING_STATUSES = ["ARCHIVED", "DRAFT", "USER_ARCHIVED"];
 
 function taskLimitFor(subscriptionTier: string) {
   return subscriptionTier === "SUBSCRIBER" ? SUBSCRIBER_TASK_LIMIT : FREE_TASK_LIMIT;
+}
+
+// Called after a user's subscription lands on FREE (downgrade or renewal
+// lapse). A Pro user can be well over the free task limit; rather than
+// leaving those tasks live and just blocking new ones, bring them back down
+// to the free shape immediately: keep one available task if none of their
+// tasks are currently assigned to a group, otherwise archive all available
+// tasks (their in-progress group tasks are never touched - they just can't
+// add more availability until those finish).
+export async function enforceFreeTaskLimit(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.subscriptionTier === "SUBSCRIBER") return;
+
+  const assignedCount = await prisma.task.count({
+    where: { ownerId: userId, status: { in: ["SUBMITTED", "APPROVED", "ACTIVE"] } },
+  });
+  const availableTasks = await prisma.task.findMany({
+    where: { ownerId: userId, status: "AVAILABLE" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (availableTasks.length === 0) return;
+
+  const keepCount = assignedCount > 0 ? 0 : 1;
+  const toArchive = availableTasks.slice(keepCount);
+  if (toArchive.length > 0) {
+    await prisma.task.updateMany({ where: { id: { in: toArchive.map((t) => t.id) } }, data: { status: "USER_ARCHIVED" } });
+  }
 }
 
 async function serializeTask(
@@ -74,6 +103,31 @@ router.get("/tasks/:id", async (req, res) => {
   if (!task) return res.status(404).json({ error: "Task not found." });
   const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
   res.json(await serializeTask(task, owner));
+});
+
+// Public-safe view of any task (not just your own) - used when a group leader
+// is reviewing a member's/invitee's tasks, or viewing a fellow group member's
+// task. Never exposes the exact address, only the approximate label.
+router.get("/tasks/:id/public", async (req, res) => {
+  const task = await prisma.task.findUnique({
+    where: { id: req.params.id },
+    include: { category: true, photos: true, owner: true },
+  });
+  if (!task) return res.status(404).json({ error: "Task not found." });
+
+  const usingHome = task.locationType === "HOME";
+  res.json({
+    id: task.id,
+    name: task.name,
+    category: { id: task.category.id, name: task.category.name },
+    description: task.description,
+    estimatedManHours: task.estimatedManHours,
+    locationLabel: usingHome ? task.owner.locationLabel : task.locationLabel,
+    status: task.status,
+    photos: task.photos.map((p) => ({ id: p.id, url: p.url })),
+    ownerId: task.ownerId,
+    ownerFirstName: task.owner.firstName,
+  });
 });
 
 const locationSchema = z.union([
@@ -164,6 +218,9 @@ router.put("/tasks/:id", async (req, res) => {
   if (existing.status === "ARCHIVED" || existing.status === "COMPLETED") {
     return res.status(400).json({ error: "Completed tasks can't be edited." });
   }
+  if (existing.status === "USER_ARCHIVED") {
+    return res.status(400).json({ error: "Activate this task before editing it." });
+  }
   if (isLocked(existing)) {
     return res.status(400).json({ error: "This task is locked while its group is working through the current cycle." });
   }
@@ -226,6 +283,48 @@ router.post("/tasks/:id/publish", async (req, res) => {
   res.json(await serializeTask(task, owner));
 });
 
+// User shelves an available task - keeps the history/description around
+// without it counting toward their active task limit.
+router.post("/tasks/:id/archive", async (req, res) => {
+  const existing = await prisma.task.findFirst({ where: { id: req.params.id, ownerId: req.userId } });
+  if (!existing) return res.status(404).json({ error: "Task not found." });
+  if (existing.status !== "AVAILABLE") {
+    return res.status(400).json({ error: "Only an available task can be archived." });
+  }
+
+  const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+  const task = await prisma.task.update({
+    where: { id: existing.id },
+    data: { status: "USER_ARCHIVED" },
+    include: { category: true, photos: true, group: true },
+  });
+  res.json(await serializeTask(task, owner));
+});
+
+router.post("/tasks/:id/activate", async (req, res) => {
+  const existing = await prisma.task.findFirst({ where: { id: req.params.id, ownerId: req.userId } });
+  if (!existing) return res.status(404).json({ error: "Task not found." });
+  if (existing.status !== "USER_ARCHIVED") {
+    return res.status(400).json({ error: "Only an archived task can be activated." });
+  }
+
+  const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+  const activeCount = await prisma.task.count({
+    where: { ownerId: req.userId, status: { notIn: NON_COUNTING_STATUSES } },
+  });
+  const limit = taskLimitFor(owner.subscriptionTier);
+  if (activeCount >= limit) {
+    return res.status(403).json({ error: `You're at your active task limit (${limit}). Archive or complete one first.` });
+  }
+
+  const task = await prisma.task.update({
+    where: { id: existing.id },
+    data: { status: "AVAILABLE" },
+    include: { category: true, photos: true, group: true },
+  });
+  res.json(await serializeTask(task, owner));
+});
+
 router.delete("/tasks/:id", async (req, res) => {
   const existing = await prisma.task.findFirst({
     where: { id: req.params.id, ownerId: req.userId },
@@ -240,11 +339,17 @@ router.delete("/tasks/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+const MAX_TASK_PHOTOS = 4;
+
 router.post("/tasks/:id/photos", async (req, res) => {
   const task = await prisma.task.findFirst({ where: { id: req.params.id, ownerId: req.userId } });
   if (!task) return res.status(404).json({ error: "Task not found." });
   const url = String(req.body.url ?? "").trim();
   if (!url) return res.status(400).json({ error: "Photo URL is required." });
+  const count = await prisma.taskPhoto.count({ where: { taskId: task.id } });
+  if (count >= MAX_TASK_PHOTOS) {
+    return res.status(400).json({ error: `You can add up to ${MAX_TASK_PHOTOS} photos per task.` });
+  }
   const photo = await prisma.taskPhoto.create({ data: { taskId: task.id, url } });
   res.status(201).json(photo);
 });

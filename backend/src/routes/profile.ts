@@ -2,16 +2,29 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
-import { computeRatingSummary } from "../services/ratings";
+import { computeRatingBreakdown, computeRatingSummary } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
-import { sendVerificationCode, isDevBypassCode } from "../services/sms";
+import { geocodeLabel } from "../services/geocode";
 
 const router = Router();
 router.use(requireAuth);
 
-const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten Free", "Dairy Free", "Nut Allergy", "Other"];
+const DIETARY_OPTIONS = [
+  "Vegetarian",
+  "Vegan",
+  "Pescatarian",
+  "No Seafood",
+  "Lactose Intolerant",
+  "Kosher",
+  "Halal",
+  "Food Allergies",
+];
 
-function serializePrivateProfile(user: any, ratings: Awaited<ReturnType<typeof computeRatingSummary>>) {
+function serializePrivateProfile(
+  user: any,
+  ratings: Awaited<ReturnType<typeof computeRatingSummary>>,
+  completedTasksCount: number
+) {
   return {
     id: user.id,
     phone: user.phone,
@@ -26,15 +39,22 @@ function serializePrivateProfile(user: any, ratings: Awaited<ReturnType<typeof c
     profilePhotoUrl: user.profilePhotoUrl,
     profileComplete: user.profileComplete,
     subscriptionTier: user.subscriptionTier,
-    skills: user.skills?.map((s: any) => ({ id: s.id, label: s.label })) ?? [],
-    tools: user.tools?.map((t: any) => ({ id: t.id, label: t.label })) ?? [],
+    lookingForGroup: user.lookingForGroup,
     dietary: user.dietary?.map((d: any) => d.type) ?? [],
+    allergyDetail: user.dietary?.find((d: any) => d.type === "Food Allergies")?.detail ?? null,
     photos: user.photos?.map((p: any) => ({ id: p.id, url: p.url })) ?? [],
     overallRating: ratings.overallRating,
     workerRating: ratings.workerRating,
     hostRating: ratings.hostRating,
     completedCycles: ratings.completedCycles,
+    completedTasksCount,
   };
+}
+
+async function countCompletedTasks(userId: string) {
+  // Tasks never actually rest in a "COMPLETED" status - completeTask (groups.ts)
+  // moves them straight to ARCHIVED, matching computeRatingSummary's own check.
+  return prisma.task.count({ where: { ownerId: userId, status: "ARCHIVED" } });
 }
 
 function isProfileComplete(u: {
@@ -51,10 +71,24 @@ function isProfileComplete(u: {
 router.get("/me", async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.userId },
-    include: { skills: true, tools: true, dietary: true, photos: true },
+    include: { dietary: true, photos: true },
   });
   if (!user) return res.status(404).json({ error: "Account not found." });
-  res.json(serializePrivateProfile(user, await computeRatingSummary(user.id)));
+  res.json(
+    serializePrivateProfile(user, await computeRatingSummary(user.id), await countCompletedTasks(user.id))
+  );
+});
+
+// Sub-score breakdown behind the Home screen's headline rating - fetched on
+// demand only when the user expands it, so it doesn't weigh down every /me call.
+router.get("/me/rating-breakdown", async (req, res) => {
+  res.json(await computeRatingBreakdown(req.userId!));
+});
+
+router.put("/me/looking-for-group", async (req, res) => {
+  const lookingForGroup = Boolean(req.body.lookingForGroup);
+  const updated = await prisma.user.update({ where: { id: req.userId }, data: { lookingForGroup } });
+  res.json({ lookingForGroup: updated.lookingForGroup });
 });
 
 const updateProfileSchema = z.object({
@@ -64,12 +98,17 @@ const updateProfileSchema = z.object({
   locationLabel: z.string().min(1).max(120).optional(),
   locationLat: z.number().optional(),
   locationLng: z.number().optional(),
-  homeAddress: z.string().max(200).optional(),
   bio: z.string().max(1000).optional(),
   profilePhotoUrl: z.string().url().optional(),
 });
 
-// 2.3/2.4/2.11 - users may edit their profile at any time.
+// 2.3/2.4/2.11 - users may edit most of their profile at any time. Age and
+// gender are the exception: they're only settable once, during onboarding
+// (existing.age/gender null). Locking them in stops the "get a bad rating,
+// wipe it by changing details, look like a new person" pattern - phone
+// number (immutable, see auth.ts) is the real identity anchor, but age/
+// gender free-editing would still let someone launder a damaged reputation
+// enough to dodge casual pattern-matching by other members.
 router.put("/me", async (req, res) => {
   const parsed = updateProfileSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -77,173 +116,93 @@ router.put("/me", async (req, res) => {
   }
 
   const existing = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+
+  if (parsed.data.age != null && existing.age != null && parsed.data.age !== existing.age) {
+    return res.status(400).json({ error: "Age can't be changed once your account is created." });
+  }
+  if (parsed.data.gender != null && existing.gender != null && parsed.data.gender !== existing.gender) {
+    return res.status(400).json({ error: "Gender can't be changed once your account is created." });
+  }
+
   const merged = { ...existing, ...parsed.data };
+
+  // Only "Use my current location" sends real coordinates from the app;
+  // anyone who just types a location (very common - it's not obvious GPS
+  // permission is what map visibility actually depends on) would otherwise
+  // save with no lat/lng and silently never show up on any map view.
+  let geocoded: { lat: number; lng: number } | null = null;
+  if (
+    parsed.data.locationLabel &&
+    parsed.data.locationLat == null &&
+    parsed.data.locationLng == null &&
+    parsed.data.locationLabel !== existing.locationLabel
+  ) {
+    geocoded = await geocodeLabel(parsed.data.locationLabel);
+  }
 
   const updated = await prisma.user.update({
     where: { id: req.userId },
     data: {
       ...parsed.data,
+      ...(geocoded ? { locationLat: geocoded.lat, locationLng: geocoded.lng } : {}),
       profileComplete: isProfileComplete(merged),
     },
-    include: { skills: true, tools: true, dietary: true, photos: true },
+    include: { dietary: true, photos: true },
   });
 
-  res.json(serializePrivateProfile(updated, await computeRatingSummary(updated.id)));
+  res.json(
+    serializePrivateProfile(updated, await computeRatingSummary(updated.id), await countCompletedTasks(updated.id))
+  );
 });
 
-// ---- Mobile number change (10.6) - never creates a new account or affects
-// ratings, history or active groups; just updates the phone on this row. ----
+// ---- Mobile number change / self-service account deletion - DISABLED. ----
+// The phone number is a user's unique account identity, and self-deletion
+// was the other half of a real abuse pattern: join a group, do the minimum,
+// skip helping others, rack up bad ratings, delete, sign up again clean.
+// Locking both closed means a damaged reputation actually has to be lived
+// with rather than laundered away. Routes are kept (rather than removed) so
+// the reasoning stays visible in code and any future admin-initiated flow
+// has a clear place to live.
 
-const CODE_TTL_MINUTES = 10;
-
-const changePhoneRequestSchema = z.object({ newPhone: z.string().min(6, "Enter a valid mobile number.") });
-
-router.post("/me/change-phone/request", async (req, res) => {
-  const parsed = changePhoneRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { newPhone } = parsed.data;
-
-  const existing = await prisma.user.findUnique({ where: { phone: newPhone } });
-  if (existing) return res.status(400).json({ error: "That number is already in use by another account." });
-
-  const code = await sendVerificationCode(newPhone);
-  await prisma.phoneVerification.create({
-    data: { phone: newPhone, code, expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000) },
-  });
-
-  res.json({ ok: true });
+router.post("/me/change-phone/request", async (_req, res) => {
+  res.status(403).json({ error: "Mobile numbers can't be changed - it's your account's permanent identity." });
 });
 
-const changePhoneConfirmSchema = z.object({ newPhone: z.string().min(6), code: z.string().min(4) });
-
-router.post("/me/change-phone/confirm", async (req, res) => {
-  const parsed = changePhoneConfirmSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { newPhone, code } = parsed.data;
-
-  if (!isDevBypassCode(code)) {
-    const verification = await prisma.phoneVerification.findFirst({
-      where: { phone: newPhone, code, consumedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: "desc" },
-    });
-    if (!verification) return res.status(400).json({ error: "That code is incorrect or has expired." });
-    await prisma.phoneVerification.update({ where: { id: verification.id }, data: { consumedAt: new Date() } });
-  }
-
-  const existing = await prisma.user.findUnique({ where: { phone: newPhone } });
-  if (existing) return res.status(400).json({ error: "That number is already in use by another account." });
-
-  const updated = await prisma.user.update({ where: { id: req.userId }, data: { phone: newPhone } });
-  res.json({ phone: updated.phone });
+router.post("/me/change-phone/confirm", async (_req, res) => {
+  res.status(403).json({ error: "Mobile numbers can't be changed - it's your account's permanent identity." });
 });
 
-// ---- Account deletion (10.8) - deferred while the user has active group
-// commitments; otherwise anonymised immediately. The row itself is kept so
-// historical ratings and completed groups still reference a valid user. ----
-
-async function activeCommitmentGroups(userId: string) {
-  const memberships = await prisma.groupMember.findMany({
-    where: { userId, status: "ACTIVE", group: { state: { notIn: ["DISBANDED"] } } },
-    include: { group: true },
-  });
-  const pendingApplications = await prisma.groupApplication.findMany({
-    where: { applicantId: userId, status: "PENDING" },
-    include: { group: true },
-  });
-  const names = new Set<string>();
-  memberships.forEach((m) => names.add(m.group.name));
-  pendingApplications.forEach((a) => names.add(a.group.name));
-  return [...names];
-}
-
-router.post("/me/delete-request", async (req, res) => {
-  const blocking = await activeCommitmentGroups(req.userId!);
-
-  if (blocking.length > 0) {
-    await prisma.user.update({ where: { id: req.userId }, data: { status: "PENDING_DELETION" } });
-    return res.json({
-      deferred: true,
-      message: "Deletion is deferred until your active group commitments finish. Leave or complete them, then request deletion again.",
-      blockingGroups: blocking,
-    });
-  }
-
-  await prisma.$transaction([
-    prisma.userSkill.deleteMany({ where: { userId: req.userId } }),
-    prisma.userTool.deleteMany({ where: { userId: req.userId } }),
-    prisma.userDietary.deleteMany({ where: { userId: req.userId } }),
-    prisma.userPhoto.deleteMany({ where: { userId: req.userId } }),
-    prisma.user.update({
-      where: { id: req.userId },
-      data: {
-        phone: `deleted-${req.userId}`,
-        firstName: null,
-        age: null,
-        gender: null,
-        locationLabel: null,
-        locationLat: null,
-        locationLng: null,
-        homeAddress: null,
-        bio: null,
-        profilePhotoUrl: null,
-        status: "DELETED",
-      },
-    }),
-  ]);
-
-  res.json({ deferred: false, message: "Your account has been deleted." });
+router.post("/me/delete-request", async (_req, res) => {
+  res.status(403).json({ error: "Accounts can't be self-deleted. Contact support if you need help with your account." });
 });
 
-router.post("/me/cancel-deletion", async (req, res) => {
-  await prisma.user.update({ where: { id: req.userId }, data: { status: "ACTIVE" } });
-  res.json({ ok: true });
-});
-
-// ---- Skills (2.6) ----
-
-router.post("/me/skills", async (req, res) => {
-  const label = String(req.body.label ?? "").trim();
-  if (!label) return res.status(400).json({ error: "Skill cannot be empty." });
-  const skill = await prisma.userSkill.create({ data: { userId: req.userId!, label } });
-  res.status(201).json(skill);
-});
-
-router.delete("/me/skills/:id", async (req, res) => {
-  await prisma.userSkill.deleteMany({ where: { id: req.params.id, userId: req.userId } });
-  res.json({ ok: true });
-});
-
-// ---- Tools (2.7) ----
-
-router.post("/me/tools", async (req, res) => {
-  const label = String(req.body.label ?? "").trim();
-  if (!label) return res.status(400).json({ error: "Tool cannot be empty." });
-  const tool = await prisma.userTool.create({ data: { userId: req.userId!, label } });
-  res.status(201).json(tool);
-});
-
-router.delete("/me/tools/:id", async (req, res) => {
-  await prisma.userTool.deleteMany({ where: { id: req.params.id, userId: req.userId } });
-  res.json({ ok: true });
+router.post("/me/cancel-deletion", async (_req, res) => {
+  res.status(403).json({ error: "Accounts can't be self-deleted, so there's nothing to cancel." });
 });
 
 // ---- Dietary requirements (2.8) ----
 
 router.put("/me/dietary", async (req, res) => {
-  const types: string[] = Array.isArray(req.body.types) ? req.body.types : [];
-  const invalid = types.filter((t) => !DIETARY_OPTIONS.includes(t));
-  if (invalid.length > 0) {
-    return res.status(400).json({ error: `Unknown dietary option(s): ${invalid.join(", ")}` });
-  }
+  const requested: string[] = Array.isArray(req.body.types) ? req.body.types : [];
+  const allergyDetail = typeof req.body.allergyDetail === "string" ? req.body.allergyDetail.trim().slice(0, 300) : null;
+  // Silently drop anything that isn't a current option instead of rejecting
+  // the whole save - the list has changed before (e.g. "Other" used to be
+  // valid) and a stale value from an old save shouldn't block an unrelated
+  // profile edit forever.
+  const types = requested.filter((t) => DIETARY_OPTIONS.includes(t));
 
   await prisma.$transaction([
     prisma.userDietary.deleteMany({ where: { userId: req.userId } }),
     prisma.userDietary.createMany({
-      data: types.map((type) => ({ userId: req.userId!, type })),
+      data: types.map((type) => ({
+        userId: req.userId!,
+        type,
+        detail: type === "Food Allergies" && allergyDetail ? allergyDetail : null,
+      })),
     }),
   ]);
 
-  res.json({ types });
+  res.json({ types, allergyDetail: types.includes("Food Allergies") ? allergyDetail : null });
 });
 
 // ---- Photos ----
@@ -268,7 +227,7 @@ router.delete("/me/photos/:id", async (req, res) => {
 router.get("/users/:id", async (req, res) => {
   const target = await prisma.user.findUnique({
     where: { id: req.params.id },
-    include: { skills: true, tools: true, photos: true },
+    include: { photos: true },
   });
   if (!target) return res.status(404).json({ error: "User not found." });
 
@@ -295,21 +254,75 @@ router.get("/users/:id", async (req, res) => {
     firstName: target.firstName,
     age: target.age,
     gender: target.gender,
+    isPro: target.subscriptionTier === "SUBSCRIBER",
     approxDistanceMiles: approxDistanceMiles != null ? Math.round(approxDistanceMiles * 10) / 10 : null,
     bio: target.bio,
     profilePhotoUrl: target.profilePhotoUrl,
     photos: target.photos.map((p) => ({ id: p.id, url: p.url })),
-    skills: target.skills.map((s) => s.label),
-    tools: target.tools.map((t) => t.label),
     overallRating: ratings.overallRating,
     workerRating: ratings.workerRating,
     hostRating: ratings.hostRating,
     completedCycles: ratings.completedCycles,
+    completedTasksCount: await countCompletedTasks(target.id),
   });
 });
 
+// Any non-draft task belonging to this user, with safe (non-address) fields -
+// used when a group leader is choosing which of a member's/invitee's tasks
+// to view or invite them to join with.
+router.get("/users/:id/tasks", async (req, res) => {
+  const blocked = await prisma.block.findFirst({
+    where: {
+      OR: [
+        { blockerId: req.userId, blockedId: req.params.id },
+        { blockerId: req.params.id, blockedId: req.userId },
+      ],
+    },
+  });
+  if (blocked) return res.status(404).json({ error: "User not found." });
+
+  const tasks = await prisma.task.findMany({
+    where: { ownerId: req.params.id, status: { not: "DRAFT" } },
+    include: { category: true, photos: true, owner: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json(
+    tasks.map((task) => {
+      const usingHome = task.locationType === "HOME";
+      return {
+        id: task.id,
+        name: task.name,
+        category: { id: task.category.id, name: task.category.name },
+        description: task.description,
+        estimatedManHours: task.estimatedManHours,
+        locationLabel: usingHome ? task.owner.locationLabel : task.locationLabel,
+        status: task.status,
+        photos: task.photos.map((p) => ({ id: p.id, url: p.url })),
+        ownerId: task.ownerId,
+        ownerFirstName: task.owner.firstName,
+      };
+    })
+  );
+});
 
 // ---- Blocking & reporting (2.9) ----
+
+router.get("/me/blocked", async (req, res) => {
+  const blocks = await prisma.block.findMany({
+    where: { blockerId: req.userId },
+    include: { blocked: true },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(
+    blocks.map((b) => ({
+      userId: b.blockedId,
+      firstName: b.blocked.firstName,
+      profilePhotoUrl: b.blocked.profilePhotoUrl,
+      blockedAt: b.createdAt,
+    }))
+  );
+});
 
 router.post("/users/:id/block", async (req, res) => {
   if (req.params.id === req.userId) return res.status(400).json({ error: "You cannot block yourself." });

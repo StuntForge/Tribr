@@ -24,29 +24,43 @@ router.get("/members/search", async (req, res) => {
   const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : undefined;
   const minRating = typeof req.query.minRating === "string" ? Number(req.query.minRating) : undefined;
   const maxDistanceMiles = typeof req.query.maxDistanceMiles === "string" ? Number(req.query.maxDistanceMiles) : undefined;
+  const ageMin = typeof req.query.ageMin === "string" ? Number(req.query.ageMin) : undefined;
+  const ageMax = typeof req.query.ageMax === "string" ? Number(req.query.ageMax) : undefined;
+  const gender = typeof req.query.gender === "string" ? req.query.gender : undefined;
+  const hasPhoto = req.query.hasPhoto === "true";
+  const favouritesOnly = req.query.favouritesOnly === "true";
+
+  let favouriteIds: string[] | undefined;
+  if (favouritesOnly) {
+    const favs = await prisma.favourite.findMany({ where: { ownerId: req.userId } });
+    favouriteIds = favs.map((f) => f.favouriteUserId);
+  }
+
+  const ageFilter: { gte?: number; lte?: number } = {};
+  if (ageMin != null && !Number.isNaN(ageMin)) ageFilter.gte = ageMin;
+  if (ageMax != null && !Number.isNaN(ageMax)) ageFilter.lte = ageMax;
 
   const candidates = await prisma.user.findMany({
     where: {
       id: { notIn: [...blockedUserIds, req.userId!] },
       profileComplete: true,
       status: "ACTIVE",
-      ...(query
-        ? {
-            OR: [
-              { firstName: { contains: query } },
-              { skills: { some: { label: { contains: query } } } },
-              { tools: { some: { label: { contains: query } } } },
-            ],
-          }
-        : {}),
+      lookingForGroup: true,
+      ...(query ? { firstName: { contains: query } } : {}),
       ...(categoryId ? { tasks: { some: { status: "AVAILABLE", categoryId } } } : {}),
+      ...(Object.keys(ageFilter).length > 0 ? { age: ageFilter } : {}),
+      ...(gender ? { gender } : {}),
+      ...(hasPhoto ? { profilePhotoUrl: { not: null } } : {}),
+      ...(favouriteIds ? { id: { in: favouriteIds } } : {}),
     },
     include: {
-      skills: true,
-      tools: true,
       tasks: { where: { status: "AVAILABLE" }, include: { category: true } },
     },
-    take: 50,
+    // No `take` here - capping before distance/relevance sorting silently
+    // dropped arbitrary candidates (real bug: a genuine match sat at
+    // position 51 in DB order and never made it into results at all,
+    // regardless of how close or relevant they actually were). Cap after
+    // sorting instead, below.
   });
 
   const results = await Promise.all(
@@ -59,23 +73,43 @@ router.get("/members/search", async (req, res) => {
       return {
         id: c.id,
         firstName: c.firstName,
+        age: c.age,
+        gender: c.gender,
+        profilePhotoUrl: c.profilePhotoUrl,
+        subscriptionTier: c.subscriptionTier,
+        locationLat: c.locationLat,
+        locationLng: c.locationLng,
         approxDistanceMiles,
         overallRating: ratings.overallRating,
         workerRating: ratings.workerRating,
         hostRating: ratings.hostRating,
-        skills: c.skills.map((s) => s.label),
-        tools: c.tools.map((t) => t.label),
+        completedCycles: ratings.completedCycles,
         activeTasks: c.tasks.map((t) => ({ id: t.id, name: t.name, category: t.category.name })),
       };
     })
   );
 
-  const filtered = results.filter((r) => {
-    if (maxDistanceMiles != null && (r.approxDistanceMiles == null || r.approxDistanceMiles > maxDistanceMiles)) return false;
-    if (minRating != null && (r.overallRating == null || r.overallRating < minRating)) return false;
-    return true;
-  });
+  const filtered = results
+    .filter((r) => {
+      if (maxDistanceMiles != null && (r.approxDistanceMiles == null || r.approxDistanceMiles > maxDistanceMiles)) return false;
+      if (minRating != null && (r.overallRating == null || r.overallRating < minRating)) return false;
+      return true;
+    })
+    // Subscribers get priority placement in search results (8.7-style paid visibility perk),
+    // then closest first within each tier.
+    .sort((a, b) => {
+      if (a.subscriptionTier !== b.subscriptionTier) return a.subscriptionTier === "SUBSCRIBER" ? -1 : 1;
+      if (a.approxDistanceMiles == null) return b.approxDistanceMiles == null ? 0 : 1;
+      if (b.approxDistanceMiles == null) return -1;
+      return a.approxDistanceMiles - b.approxDistanceMiles;
+    });
 
+  // No cap: at real-world scale a leader browsing everyone "looking for a
+  // group" would want pagination, but with a few dozen users total (mostly
+  // seed data plus a handful of real testers) any fixed cap just hides
+  // whoever the sort order happens to push last - which, in practice, is
+  // exactly the real tester you're trying to find. Revisit with proper
+  // pagination once the user base is large enough for it to matter.
   res.json(filtered);
 });
 
@@ -92,6 +126,7 @@ router.get("/me/favourites", async (req, res) => {
     favourites.map(async (f) => ({
       userId: f.favouriteUserId,
       firstName: f.favouriteUser.firstName,
+      isPro: f.favouriteUser.subscriptionTier === "SUBSCRIBER",
       overallRating: (await computeRatingSummary(f.favouriteUserId)).overallRating,
     }))
   );

@@ -11,8 +11,6 @@ interface UserDetailData {
   status: string;
   subscriptionTier: string;
   createdAt: string;
-  skills: string[];
-  tools: string[];
   groups: { id: string; name: string; state: string; isLeader: boolean }[];
   reportsReceived: { id: string; reason: string; details: string | null; status: string; reporterName: string | null; createdAt: string }[];
   reportsMadeCount: number;
@@ -26,12 +24,19 @@ export default function UserDetail() {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const load = () => {
     apiFetch<UserDetailData>(`/api/admin/users/${id}`).then(setUser);
   };
 
   useEffect(load, [id]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   const act = async (action: "suspend" | "ban" | "reinstate") => {
     setError(null);
@@ -53,6 +58,7 @@ export default function UserDetail() {
 
   const resolveReport = async (reportId: string, status: "RESOLVED" | "DISMISSED") => {
     await apiFetch(`/api/admin/reports/${reportId}/resolve`, { method: "POST", body: { status } });
+    setMessage(status === "RESOLVED" ? "Report resolved." : "Report dismissed.");
     load();
   };
 
@@ -64,6 +70,12 @@ export default function UserDetail() {
         ← Back to users
       </button>
       <h2>{user.firstName ?? "Unnamed user"}</h2>
+
+      {message && (
+        <p className="hint" style={{ color: "#3D6B52", fontWeight: 600 }}>
+          {message}
+        </p>
+      )}
 
       <div className="card">
         <p>
@@ -79,16 +91,6 @@ export default function UserDetail() {
           <strong>Joined:</strong> {new Date(user.createdAt).toLocaleDateString()} &nbsp; <strong>Reports made:</strong>{" "}
           {user.reportsMadeCount}
         </p>
-        {user.skills.length > 0 && (
-          <p>
-            <strong>Skills:</strong> {user.skills.join(", ")}
-          </p>
-        )}
-        {user.tools.length > 0 && (
-          <p>
-            <strong>Tools:</strong> {user.tools.join(", ")}
-          </p>
-        )}
       </div>
 
       <div className="card">

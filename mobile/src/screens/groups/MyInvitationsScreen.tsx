@@ -1,15 +1,29 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { getMyInvitations, MyInvitation, respondToInvitation } from "../../api/groups";
-import { getMyTasks } from "../../api/tasks";
-import { colors, spacing } from "../../theme";
+import ProBadge from "../../components/ProBadge";
+import SortSelect from "../../components/SortSelect";
+import { colors, radii, shadows, spacing } from "../../theme";
 
-export default function MyInvitationsScreen() {
+type SortKey = "distance" | "members";
+
+export default function MyInvitationsScreen({ navigation }: any) {
   const queryClient = useQueryClient();
   const { data: invitations, isLoading } = useQuery({ queryKey: ["my-invitations"], queryFn: getMyInvitations });
-  const { data: tasks } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks });
-  const availableTasks = tasks?.filter((t) => t.status === "AVAILABLE") ?? [];
+  const [sort, setSort] = useState<SortKey>("distance");
+
+  const sorted = useMemo(() => {
+    if (!invitations) return invitations;
+    const copy = [...invitations];
+    if (sort === "distance") {
+      copy.sort((a, b) => (a.group.approxDistanceMiles ?? Infinity) - (b.group.approxDistanceMiles ?? Infinity));
+    } else {
+      copy.sort((a, b) => b.group.memberCount - a.group.memberCount);
+    }
+    return copy;
+  }, [invitations, sort]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["my-invitations"] });
@@ -18,7 +32,7 @@ export default function MyInvitationsScreen() {
   };
 
   const respondMutation = useMutation({
-    mutationFn: ({ id, accept, taskId }: { id: string; accept: boolean; taskId?: string }) => respondToInvitation(id, accept, taskId),
+    mutationFn: ({ id, accept }: { id: string; accept: boolean }) => respondToInvitation(id, accept),
     onSuccess: invalidate,
   });
 
@@ -34,16 +48,30 @@ export default function MyInvitationsScreen() {
     <FlatList
       style={styles.container}
       contentContainerStyle={styles.listContent}
-      data={invitations}
+      data={sorted}
       keyExtractor={(i) => i.id}
+      ListHeaderComponent={
+        (invitations?.length ?? 0) > 0 ? (
+          <View style={{ marginBottom: spacing.md }}>
+            <SortSelect
+              options={[
+                { value: "distance", label: "Distance" },
+                { value: "members", label: "Total members" },
+              ]}
+              value={sort}
+              onChange={setSort}
+            />
+          </View>
+        ) : null
+      }
       ListEmptyComponent={<Text style={styles.emptyBody}>No pending invitations.</Text>}
       renderItem={({ item }) => (
         <InvitationCard
           invitation={item}
-          availableTasks={availableTasks}
           busy={respondMutation.isPending}
-          onAccept={(taskId) => respondMutation.mutate({ id: item.id, accept: true, taskId })}
+          onAccept={() => respondMutation.mutate({ id: item.id, accept: true })}
           onDecline={() => respondMutation.mutate({ id: item.id, accept: false })}
+          onViewTasks={() => navigation.navigate("GroupCurrentTasks", { groupId: item.group.id, groupName: item.group.name })}
         />
       )}
     />
@@ -52,38 +80,55 @@ export default function MyInvitationsScreen() {
 
 function InvitationCard({
   invitation,
-  availableTasks,
   busy,
   onAccept,
   onDecline,
+  onViewTasks,
 }: {
   invitation: MyInvitation;
-  availableTasks: { id: string; name: string }[];
   busy: boolean;
-  onAccept: (taskId: string) => void;
+  onAccept: () => void;
   onDecline: () => void;
+  onViewTasks: () => void;
 }) {
-  const [taskId, setTaskId] = useState<string | null>(invitation.suggestedTask?.id ?? null);
+  const { group } = invitation;
+
+  const ageRange =
+    group.preferredAgeMin != null || group.preferredAgeMax != null
+      ? `${group.preferredAgeMin ?? "Any"}-${group.preferredAgeMax ?? "Any"}`
+      : "Any age";
 
   return (
     <View style={styles.card}>
-      <Text style={styles.groupName}>{invitation.group.name}</Text>
-      <Text style={styles.meta}>
-        {invitation.group.category ?? "Any category"} · led by {invitation.group.leaderName}
-      </Text>
-      {invitation.suggestedTask && <Text style={styles.meta}>Suggested task: {invitation.suggestedTask.name}</Text>}
-
-      <Text style={styles.label}>Join with which task?</Text>
-      <View style={styles.chipRow}>
-        {availableTasks.map((t) => (
-          <TouchableOpacity key={t.id} style={[styles.chip, taskId === t.id && styles.chipSelected]} onPress={() => setTaskId(t.id)}>
-            <Text style={[styles.chipText, taskId === t.id && styles.chipTextSelected]}>{t.name}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.headerRow}>
+        <Text style={styles.groupName}>{group.name}</Text>
+        {group.approxDistanceMiles != null && <Text style={styles.distance}>{group.approxDistanceMiles} mi away</Text>}
+      </View>
+      <View style={styles.metaRow}>
+        <Text style={styles.meta}>led by {group.leaderName}</Text>
+        {group.leaderIsPro && <ProBadge size="tiny" />}
       </View>
 
+      <View style={styles.detailGrid}>
+        <DetailRow icon="people" label={`${group.memberCount} member${group.memberCount === 1 ? "" : "s"} (${group.sizeMin}-${group.sizeMax})`} />
+        {group.preferredGender && <DetailRow icon="body" label={group.preferredGender} />}
+        <DetailRow icon="calendar" label={`Age: ${ageRange}`} />
+        {group.minRating != null && <DetailRow icon="star" label={`${group.minRating.toFixed(1)}★ minimum rating`} />}
+        {group.verifiedOnly && <DetailRow icon="checkmark-circle" label="Verified members only" />}
+        <DetailRow icon="pricetags" label={group.categories.length > 0 ? group.categories.join(", ") : "Any category"} />
+      </View>
+
+      {invitation.suggestedTask && (
+        <Text style={styles.taskLine}>You'd join with: {invitation.suggestedTask.name}</Text>
+      )}
+
+      <TouchableOpacity style={styles.viewTasksButton} onPress={onViewTasks}>
+        <Ionicons name="list" size={14} color={colors.primary} />
+        <Text style={styles.viewTasksButtonText}>View Details</Text>
+      </TouchableOpacity>
+
       <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => taskId && onAccept(taskId)} disabled={busy || !taskId}>
+        <TouchableOpacity style={styles.primaryButton} onPress={onAccept} disabled={busy}>
           <Text style={styles.primaryButtonText}>Accept</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryButton} onPress={onDecline} disabled={busy}>
@@ -94,20 +139,42 @@ function InvitationCard({
   );
 }
 
+function DetailRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <Ionicons name={icon} size={13} color={colors.textMuted} />
+      <Text style={styles.detailText}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   listContent: { padding: spacing.lg, flexGrow: 1 },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginTop: spacing.xl },
-  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginBottom: spacing.md },
-  groupName: { fontSize: 16, fontWeight: "700", color: colors.text },
-  meta: { fontSize: 12, color: colors.textMuted, marginTop: spacing.xs },
-  label: { fontSize: 12, fontWeight: "600", color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, backgroundColor: colors.background },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { color: colors.text, fontSize: 12 },
-  chipTextSelected: { color: "#fff", fontWeight: "600" },
+  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, ...shadows.card },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
+  groupName: { fontSize: 16, fontWeight: "700", color: colors.text, flex: 1 },
+  distance: { fontSize: 12, fontWeight: "600", color: colors.primary },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: 2 },
+  meta: { fontSize: 12, color: colors.textMuted },
+  detailGrid: { marginTop: spacing.sm, gap: 4 },
+  detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  detailText: { fontSize: 12, color: colors.text },
+  taskLine: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: spacing.sm },
+  viewTasksButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  viewTasksButtonText: { color: colors.primary, fontWeight: "700", fontSize: 12 },
   actionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
   primaryButton: { flex: 1, backgroundColor: colors.primary, borderRadius: 10, padding: spacing.sm, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "600" },

@@ -1,10 +1,29 @@
 import { Router } from "express";
 import { z } from "zod";
+import path from "node:path";
+import fs from "node:fs/promises";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
 import { computeRatingSummary, revealCycleRatings } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
+
+const uploadDir = path.join(__dirname, "..", "..", "uploads");
+
+// 10.x - a completed task's photos have served their purpose (leader/members
+// could see what the job looked like); deleting them once it's archived
+// keeps disk usage bounded as the app accumulates years of history. The
+// text record (name/description/etc) stays untouched.
+async function deletePhotosForTask(taskId: string) {
+  const photos = await prisma.taskPhoto.findMany({ where: { taskId } });
+  await Promise.all(
+    photos.map(async (p) => {
+      const filename = p.url.split("/").pop();
+      if (filename) await fs.unlink(path.join(uploadDir, filename)).catch(() => {});
+    })
+  );
+  await prisma.taskPhoto.deleteMany({ where: { taskId } });
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -24,11 +43,25 @@ async function activeMembershipCount(userId: string) {
   });
 }
 
-// 4.9 - default task order rewards higher-rated members. Ratings arrive in
-// Milestone 5; until then this falls back to join order (stable, fair, and
-// the exact slot Milestone 5 will slot a rating comparator into).
-function computeDefaultOrder<T extends { userId: string; joinedAt: Date }>(members: T[]): T[] {
-  return [...members].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+// 4.9 - task order: Pro members always go before Free members, and within
+// each tier higher-rated members go first. Members tied on both (including
+// everyone unrated) fall back to join order.
+async function computeDefaultOrder<T extends { userId: string; joinedAt: Date }>(members: T[]): Promise<T[]> {
+  const [ratings, users] = await Promise.all([
+    Promise.all(members.map(async (m) => (await computeRatingSummary(m.userId)).overallRating)),
+    prisma.user.findMany({ where: { id: { in: members.map((m) => m.userId) } }, select: { id: true, subscriptionTier: true } }),
+  ]);
+  const isProById = new Map(users.map((u) => [u.id, u.subscriptionTier === "SUBSCRIBER"]));
+  return [...members]
+    .map((m, i) => ({ member: m, rating: ratings[i], isPro: isProById.get(m.userId) ?? false }))
+    .sort((a, b) => {
+      if (a.isPro !== b.isPro) return a.isPro ? -1 : 1;
+      if (a.rating != null && b.rating != null && a.rating !== b.rating) return b.rating - a.rating;
+      if (a.rating != null && b.rating == null) return -1;
+      if (a.rating == null && b.rating != null) return 1;
+      return a.member.joinedAt.getTime() - b.member.joinedAt.getTime();
+    })
+    .map((x) => x.member);
 }
 
 export async function getCurrentCycle(groupId: string, cycleNumber: number) {
@@ -46,6 +79,57 @@ export function parseOrder(cycle: { taskOrder: string | null }): string[] {
 
 async function saveOrder(cycleId: string, order: string[]) {
   await prisma.groupCycle.update({ where: { id: cycleId }, data: { taskOrder: JSON.stringify(order) } });
+}
+
+// 5.x - the same 2-week window the owner sees on their calendar. Kept in
+// sync with schedule.ts's PROPOSAL_WINDOW_DAYS.
+const PROPOSAL_WINDOW_DAYS = 14;
+
+// If the active task's 2-week scheduling window has passed with no work day
+// confirmed, it's automatically forgone and the queue advances to the next
+// member's task - resolved lazily on read, the same pattern used for
+// dissolution votes above.
+export async function forfeitExpiredActiveTask(groupId: string) {
+  const group = await prisma.group.findUnique({ where: { id: groupId } });
+  if (!group || group.state !== "WORKING") return;
+
+  const cycle = await getCurrentCycle(groupId, group.currentCycleNumber);
+  if (!cycle) return;
+  const order = parseOrder(cycle);
+  if (order.length === 0) return;
+
+  const activeTask = await prisma.task.findUnique({ where: { id: order[0] } });
+  if (!activeTask || activeTask.status !== "ACTIVE" || !activeTask.activatedAt) return;
+
+  const deadline = new Date(activeTask.activatedAt.getTime() + PROPOSAL_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  if (new Date() <= deadline) return;
+
+  const workDay = await prisma.workDay.findUnique({ where: { taskId: activeTask.id } });
+  if (workDay) return;
+
+  const newOrder = order.slice(1);
+  await prisma.task.update({ where: { id: activeTask.id }, data: { status: "FORGONE" } });
+  await postSystemMessage(groupId, `${activeTask.name} was forfeited - no work date was arranged within 2 weeks.`);
+  await notifyUser(
+    activeTask.ownerId,
+    "TASK_FORFEITED",
+    "Task forfeited",
+    `${activeTask.name} was forfeited because no work date was arranged in time.`,
+    { groupId }
+  );
+  await saveOrder(cycle.id, newOrder);
+
+  if (newOrder.length > 0) {
+    const nextTask = await prisma.task.update({
+      where: { id: newOrder[0] },
+      data: { status: "ACTIVE", activatedAt: new Date() },
+    });
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+  } else {
+    await prisma.group.update({ where: { id: groupId }, data: { state: "COMPLETED" } });
+    await prisma.groupCycle.update({ where: { id: cycle.id }, data: { completedAt: new Date() } });
+    await handleCycleComplete(groupId);
+  }
 }
 
 // Release a task back to the owner's personal library (3.12, 4.6, 6.13).
@@ -116,10 +200,12 @@ async function resolveDissolutionVoteIfDue(vote: {
 }
 
 async function serializeGroupDetail(groupId: string, viewerId: string) {
+  await forfeitExpiredActiveTask(groupId);
+
   const group = await prisma.group.findUnique({
     where: { id: groupId },
     include: {
-      category: true,
+      allowedCategories: { include: { category: true } },
       leader: true,
       members: { where: { status: "ACTIVE" }, include: { user: true }, orderBy: { joinedAt: "asc" } },
     },
@@ -149,6 +235,26 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
 
   const activeMemberCount = group.members.length;
 
+  const memberRatings = await Promise.all(group.members.map(async (m) => (await computeRatingSummary(m.userId)).overallRating));
+  const ratedMembers = memberRatings.filter((r): r is number => r != null);
+  const averageMemberRating = ratedMembers.length > 0 ? ratedMembers.reduce((a, b) => a + b, 0) / ratedMembers.length : null;
+
+  // Once a cycle has actually started, the job order is frozen (taskOrder
+  // was fixed at start-work and only ever changes by defer/forgo/complete/
+  // kick, never recomputed wholesale) - the member list should reflect that
+  // real, frozen order rather than a live rating/Pro re-sort, so a rating or
+  // subscription change mid-cycle can't visually reshuffle who's "next" in a
+  // group that's already working. Only RECRUITING/READY groups (nothing
+  // frozen yet) show the live preview order.
+  const cycleStarted = cycle?.startedAt != null;
+  const orderPositionByUserId = new Map<string, number>();
+  if (cycleStarted) {
+    order.forEach((taskId, idx) => {
+      const t = tasksById.get(taskId);
+      if (t) orderPositionByUserId.set(t.ownerId, idx);
+    });
+  }
+
   // 9.5 - visual progress through the current cycle.
   const progress = cycle
     ? {
@@ -162,7 +268,9 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     id: group.id,
     name: group.name,
     description: group.description,
-    category: group.category ? { id: group.category.id, name: group.category.name } : null,
+    categories: group.allowedCategories.map((ac) => ({ id: ac.category.id, name: ac.category.name })),
+    verifiedOnly: group.verifiedOnly,
+    minRating: group.minRating,
     locationLabel: group.locationLabel,
     preferredAgeMin: group.preferredAgeMin,
     preferredAgeMax: group.preferredAgeMax,
@@ -177,19 +285,37 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     isLeader: group.leaderId === viewerId,
     isMember: group.members.some((m) => m.userId === viewerId),
     memberCount: activeMemberCount,
+    averageMemberRating,
     pendingApplicationCount,
-    members: group.members.map((m) => {
-      const task = [...tasksById.values()].find((t) => t.ownerId === m.userId);
-      return {
-        userId: m.userId,
-        firstName: m.user.firstName,
-        isLeader: m.isLeader,
-        joinedAt: m.joinedAt,
-        currentTask: task
-          ? { id: task.id, name: task.name, status: task.status, category: task.category.name, estimatedManHours: task.estimatedManHours }
-          : null,
-      };
-    }),
+    members: group.members
+      .map((m, i) => {
+        const task = [...tasksById.values()].find((t) => t.ownerId === m.userId);
+        return {
+          userId: m.userId,
+          firstName: m.user.firstName,
+          isLeader: m.isLeader,
+          isPro: m.user.subscriptionTier === "SUBSCRIBER",
+          joinedAt: m.joinedAt,
+          rating: memberRatings[i],
+          currentTask: task
+            ? { id: task.id, name: task.name, status: task.status, category: task.category.name, estimatedManHours: task.estimatedManHours }
+            : null,
+        };
+      })
+      .sort((a, b) => {
+        if (cycleStarted) {
+          const posA = orderPositionByUserId.get(a.userId);
+          const posB = orderPositionByUserId.get(b.userId);
+          if (posA != null && posB != null) return posA - posB;
+          if (posA != null) return -1;
+          if (posB != null) return 1;
+        }
+        if (a.isPro !== b.isPro) return a.isPro ? -1 : 1;
+        if (a.rating != null && b.rating != null && a.rating !== b.rating) return b.rating - a.rating;
+        if (a.rating != null && b.rating == null) return -1;
+        if (a.rating == null && b.rating != null) return 1;
+        return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+      }),
     queue:
       cycle && refreshedGroup.state === "WORKING"
         ? order
@@ -237,6 +363,30 @@ router.get("/groups/mine", async (req, res) => {
   );
 });
 
+// Every group the caller has ever had a membership row in, including ones
+// they later left or that disbanded - unlike /groups/mine (current/active
+// only), GroupMember rows are never deleted so this is a simple full scan.
+router.get("/me/group-history", async (req, res) => {
+  const memberships = await prisma.groupMember.findMany({
+    where: { userId: req.userId, group: { state: { in: ["COMPLETED", "DISBANDED"] } } },
+    include: { group: { include: { members: { where: { status: "ACTIVE" } } } } },
+    orderBy: { joinedAt: "desc" },
+  });
+
+  res.json(
+    memberships.map((m) => ({
+      id: m.group.id,
+      name: m.group.name,
+      state: m.group.state,
+      isLeader: m.group.leaderId === req.userId,
+      myStatus: m.status,
+      memberCount: m.group.members.length,
+      joinedAt: m.joinedAt,
+      leftAt: m.leftAt,
+    }))
+  );
+});
+
 // 7.3/7.4 - browse recruiting groups. Free members may filter by distance
 // only; the other filters are silently ignored for them rather than erroring,
 // since the mobile UI simply won't offer those controls to a free account.
@@ -259,14 +409,32 @@ router.get("/groups/browse", async (req, res) => {
     where: {
       state: { in: ["RECRUITING", "READY"] },
       leaderId: { notIn: [...blockedUserIds] },
-      ...(categoryId ? { categoryId } : {}),
+      ...(categoryId ? { allowedCategories: { some: { categoryId } } } : {}),
       ...(sizeMin != null ? { sizeMax: { gte: sizeMin } } : {}),
       ...(sizeMax != null ? { sizeMin: { lte: sizeMax } } : {}),
+      // A group's preferred age range is a hard visibility filter, not just
+      // an "ineligible but visible" gate like verifiedOnly/minRating - a
+      // group outside your age range shouldn't show up at all. Only applied
+      // when we actually know the viewer's age.
+      ...(viewer.age != null
+        ? {
+            AND: [
+              { OR: [{ preferredAgeMin: null }, { preferredAgeMin: { lte: viewer.age } }] },
+              { OR: [{ preferredAgeMax: null }, { preferredAgeMax: { gte: viewer.age } }] },
+            ],
+          }
+        : {}),
     },
-    include: { category: true, leader: true, members: { where: { status: "ACTIVE" }, include: { user: true } } },
+    include: {
+      allowedCategories: { include: { category: true } },
+      leader: true,
+      members: { where: { status: "ACTIVE" } },
+    },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
+
+  const viewerRatings = await computeRatingSummary(req.userId!);
 
   const results = await Promise.all(
     groups.map(async (g) => {
@@ -279,28 +447,39 @@ router.get("/groups/browse", async (req, res) => {
       const rated = memberRatings.filter((r): r is number => r != null);
       const averageMemberRating = rated.length > 0 ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
 
+      const meetsRating = g.minRating == null || (viewerRatings.overallRating != null && viewerRatings.overallRating >= g.minRating);
+      const meetsVerified = !g.verifiedOnly || viewerRatings.completedCycles > 0;
+
       return {
         id: g.id,
         name: g.name,
         description: g.description,
-        category: g.category ? g.category.name : null,
+        categories: g.allowedCategories.map((ac) => ac.category.name),
         locationLabel: g.locationLabel,
+        locationLat: g.locationLat,
+        locationLng: g.locationLng,
         approxDistanceMiles,
         sizeMin: g.sizeMin,
         sizeMax: g.sizeMax,
         memberCount: g.members.length,
         leaderName: g.leader.firstName,
+        leaderIsPro: g.leader.subscriptionTier === "SUBSCRIBER",
         averageMemberRating,
         state: g.state,
+        createdAt: g.createdAt,
+        verifiedOnly: g.verifiedOnly,
+        minRating: g.minRating,
+        eligibleToApply: meetsRating && meetsVerified,
       };
     })
   );
 
-  const filtered = results.filter((r) => {
-    if (maxDistanceMiles != null && (r.approxDistanceMiles == null || r.approxDistanceMiles > maxDistanceMiles)) return false;
-    if (minRating != null && (r.averageMemberRating == null || r.averageMemberRating < minRating)) return false;
-    return true;
-  });
+  const filtered = results
+    .filter((r) => {
+      if (maxDistanceMiles != null && (r.approxDistanceMiles == null || r.approxDistanceMiles > maxDistanceMiles)) return false;
+      if (minRating != null && (r.averageMemberRating == null || r.averageMemberRating < minRating)) return false;
+      return true;
+    });
 
   res.json(filtered);
 });
@@ -314,7 +493,7 @@ router.get("/groups/:id", async (req, res) => {
 const createGroupSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().min(1).max(2000),
-  categoryId: z.string().optional(),
+  categoryIds: z.array(z.string()).min(1, "Choose at least one allowed category."),
   locationLabel: z.string().optional(),
   locationLat: z.number().optional(),
   locationLng: z.number().optional(),
@@ -325,6 +504,8 @@ const createGroupSchema = z.object({
   sizeMin: z.number().int().min(2).max(50),
   sizeMax: z.number().int().min(2).max(50),
   taskId: z.string().min(1),
+  verifiedOnly: z.boolean().optional(),
+  minRating: z.number().min(0).max(5).multipleOf(0.5).optional(),
 });
 
 // 4.2 - only subscribers may create groups; creator becomes leader + first member.
@@ -346,6 +527,9 @@ router.post("/groups", async (req, res) => {
   if (task.status !== "AVAILABLE") {
     return res.status(400).json({ error: "Only an available task can represent you in a new group." });
   }
+  if (!input.categoryIds.includes(task.categoryId)) {
+    return res.status(400).json({ error: "Your chosen task's category must be one of the group's allowed categories." });
+  }
 
   const activeGroups = await activeMembershipCount(req.userId!);
   if (activeGroups >= groupLimitFor(owner.subscriptionTier)) {
@@ -357,7 +541,6 @@ router.post("/groups", async (req, res) => {
       data: {
         name: input.name,
         description: input.description,
-        categoryId: input.categoryId,
         locationLabel: input.locationLabel,
         locationLat: input.locationLat,
         locationLng: input.locationLng,
@@ -367,10 +550,15 @@ router.post("/groups", async (req, res) => {
         durationBand: input.durationBand,
         sizeMin: input.sizeMin,
         sizeMax: input.sizeMax,
+        verifiedOnly: input.verifiedOnly ?? false,
+        minRating: input.minRating,
         leaderId: req.userId!,
         state: "RECRUITING",
         currentCycleNumber: 1,
       },
+    });
+    await tx.groupAllowedCategory.createMany({
+      data: input.categoryIds.map((categoryId) => ({ groupId: g.id, categoryId })),
     });
     const cycle = await tx.groupCycle.create({ data: { groupId: g.id, cycleNumber: 1 } });
     await tx.groupMember.create({ data: { groupId: g.id, userId: req.userId!, isLeader: true, status: "ACTIVE" } });
@@ -387,7 +575,6 @@ router.post("/groups", async (req, res) => {
 const updateGroupSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().min(1).max(2000).optional(),
-  categoryId: z.string().optional(),
   locationLabel: z.string().optional(),
   preferredAgeMin: z.number().int().optional(),
   preferredAgeMax: z.number().int().optional(),
@@ -435,6 +622,39 @@ router.post("/groups/:id/apply", async (req, res) => {
   });
   if (blocked) return res.status(403).json({ error: "You can't apply to this group." });
 
+  // Free members must wait 48 hours after a group is created before applying,
+  // so brand-new groups aren't immediately swamped ahead of Subscribers.
+  const applicant = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+  if (applicant.subscriptionTier !== "SUBSCRIBER") {
+    const groupAgeMs = Date.now() - group.createdAt.getTime();
+    const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+    if (groupAgeMs < FORTY_EIGHT_HOURS_MS) {
+      return res.status(403).json({
+        error: "This group is too new for free members to apply to yet. Subscribers can apply right away - try again in a day or two.",
+      });
+    }
+  }
+
+  // 10.x - leader-set eligibility gates: a minimum rating and/or "verified"
+  // (has completed at least one cycle before) requirement to apply.
+  if (group.verifiedOnly || group.minRating != null) {
+    const applicantRatings = await computeRatingSummary(req.userId!);
+    if (group.verifiedOnly && applicantRatings.completedCycles === 0) {
+      return res.status(403).json({ error: "This group only accepts verified members who've completed at least one cycle." });
+    }
+    if (group.minRating != null && (applicantRatings.overallRating == null || applicantRatings.overallRating < group.minRating)) {
+      return res.status(403).json({
+        error: `This group requires a rating of at least ${group.minRating.toFixed(1)}★ to apply.`,
+      });
+    }
+  }
+
+  if (group.preferredAgeMin != null || group.preferredAgeMax != null) {
+    if (applicant.age == null || (group.preferredAgeMin != null && applicant.age < group.preferredAgeMin) || (group.preferredAgeMax != null && applicant.age > group.preferredAgeMax)) {
+      return res.status(403).json({ error: "You're outside this group's preferred age range." });
+    }
+  }
+
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { taskId, message } = parsed.data;
@@ -443,6 +663,10 @@ router.post("/groups/:id/apply", async (req, res) => {
   if (!task) return res.status(404).json({ error: "Task not found." });
   if (task.status !== "AVAILABLE") {
     return res.status(400).json({ error: "Only an available task can be submitted." });
+  }
+  const allowedCategoryIds = await prisma.groupAllowedCategory.findMany({ where: { groupId: group.id } });
+  if (allowedCategoryIds.length > 0 && !allowedCategoryIds.some((ac) => ac.categoryId === task.categoryId)) {
+    return res.status(400).json({ error: "This task's category isn't one this group accepts." });
   }
 
   const existingMember = await prisma.groupMember.findUnique({
@@ -491,7 +715,7 @@ router.get("/groups/:id/applications", async (req, res) => {
   res.json(
     applications.map((a) => ({
       id: a.id,
-      applicant: { id: a.applicant.id, firstName: a.applicant.firstName },
+      applicant: { id: a.applicant.id, firstName: a.applicant.firstName, isPro: a.applicant.subscriptionTier === "SUBSCRIBER" },
       task: { id: a.task.id, name: a.task.name, category: a.task.category.name, estimatedManHours: a.task.estimatedManHours },
       message: a.message,
       createdAt: a.createdAt,
@@ -641,11 +865,19 @@ router.get("/groups/:id/previous-members", async (req, res) => {
 
   const previous = await prisma.groupMember.findMany({
     where: { groupId: group.id, status: "LEFT" },
-    include: { user: true },
+    include: {
+      user: { include: { tasks: { where: { status: "AVAILABLE" }, include: { category: true } } } },
+    },
     orderBy: { leftAt: "desc" },
   });
 
-  res.json(previous.map((m) => ({ userId: m.userId, firstName: m.user.firstName })));
+  res.json(
+    previous.map((m) => ({
+      userId: m.userId,
+      firstName: m.user.firstName,
+      activeTasks: m.user.tasks.map((t) => ({ id: t.id, name: t.name, category: t.category.name })),
+    }))
+  );
 });
 
 router.get("/groups/:id/invitations", async (req, res) => {
@@ -662,7 +894,10 @@ router.get("/groups/:id/invitations", async (req, res) => {
   res.json(invitations.map((i) => ({ id: i.id, invitedUser: { id: i.invitedUserId, firstName: i.invitedUser.firstName } })));
 });
 
-const inviteSchema = z.object({ invitedUserId: z.string().min(1), suggestedTaskId: z.string().optional() });
+const inviteSchema = z.object({
+  invitedUserId: z.string().min(1),
+  suggestedTaskId: z.string().min(1, "Choose which of their tasks you're inviting them to join with."),
+});
 
 router.post("/groups/:id/invitations", async (req, res) => {
   const group = await prisma.group.findUnique({ where: { id: req.params.id } });
@@ -693,9 +928,12 @@ router.post("/groups/:id/invitations", async (req, res) => {
   const existingInvite = await prisma.groupInvitation.findFirst({ where: { groupId: group.id, invitedUserId, status: "PENDING" } });
   if (existingInvite) return res.status(400).json({ error: "They already have a pending invitation." });
 
-  if (suggestedTaskId) {
-    const task = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: invitedUserId, status: "AVAILABLE" } });
-    if (!task) return res.status(400).json({ error: "That task isn't available on their profile." });
+  const task = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: invitedUserId, status: "AVAILABLE" } });
+  if (!task) return res.status(400).json({ error: "That task isn't available on their profile." });
+
+  const allowedCategories = await prisma.groupAllowedCategory.findMany({ where: { groupId: group.id } });
+  if (allowedCategories.length > 0 && !allowedCategories.some((ac) => ac.categoryId === task.categoryId)) {
+    return res.status(400).json({ error: "That task's category isn't one this group accepts." });
   }
 
   const invitation = await prisma.groupInvitation.create({
@@ -710,18 +948,88 @@ router.post("/groups/:id/invitations", async (req, res) => {
 });
 
 router.get("/me/invitations", async (req, res) => {
+  const viewer = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
   const invitations = await prisma.groupInvitation.findMany({
     where: { invitedUserId: req.userId, status: "PENDING" },
-    include: { group: { include: { category: true, leader: true } }, suggestedTask: true },
+    include: {
+      group: {
+        include: { allowedCategories: { include: { category: true } }, leader: true, members: { where: { status: "ACTIVE" } } },
+      },
+      suggestedTask: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 
   res.json(
-    invitations.map((i) => ({
-      id: i.id,
-      group: { id: i.group.id, name: i.group.name, category: i.group.category?.name ?? null, leaderName: i.group.leader.firstName },
-      suggestedTask: i.suggestedTask ? { id: i.suggestedTask.id, name: i.suggestedTask.name } : null,
-    }))
+    invitations.map((i) => {
+      let approxDistanceMiles: number | null = null;
+      if (viewer.locationLat != null && viewer.locationLng != null && i.group.locationLat != null && i.group.locationLng != null) {
+        approxDistanceMiles = Math.round(haversineMiles(viewer.locationLat, viewer.locationLng, i.group.locationLat, i.group.locationLng) * 10) / 10;
+      }
+      return {
+        id: i.id,
+        group: {
+          id: i.group.id,
+          name: i.group.name,
+          categories: i.group.allowedCategories.map((ac) => ac.category.name),
+          leaderName: i.group.leader.firstName,
+          leaderIsPro: i.group.leader.subscriptionTier === "SUBSCRIBER",
+          memberCount: i.group.members.length,
+          sizeMin: i.group.sizeMin,
+          sizeMax: i.group.sizeMax,
+          preferredAgeMin: i.group.preferredAgeMin,
+          preferredAgeMax: i.group.preferredAgeMax,
+          preferredGender: i.group.preferredGender,
+          minRating: i.group.minRating,
+          verifiedOnly: i.group.verifiedOnly,
+          approxDistanceMiles,
+        },
+        suggestedTask: i.suggestedTask ? { id: i.suggestedTask.id, name: i.suggestedTask.name } : null,
+      };
+    })
+  );
+});
+
+// Public-ish view of who's currently in a group and what they're bringing
+// this cycle - used both from a pending invitation and from Browse Groups,
+// so a prospective member can see real substance before applying/accepting.
+router.get("/groups/:id/current-tasks", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+
+  const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
+  const members = await prisma.groupMember.findMany({
+    where: { groupId: group.id, status: "ACTIVE" },
+    include: { user: true },
+    orderBy: { joinedAt: "asc" },
+  });
+
+  const tasks = cycle
+    ? await prisma.task.findMany({ where: { cycleId: cycle.id }, include: { category: true, photos: true } })
+    : [];
+  const taskByOwner = new Map(tasks.map((t) => [t.ownerId, t]));
+
+  res.json(
+    members.map((m) => {
+      const task = taskByOwner.get(m.userId);
+      return {
+        userId: m.userId,
+        firstName: m.user.firstName,
+        isLeader: m.isLeader,
+        isPro: m.user.subscriptionTier === "SUBSCRIBER",
+        task: task
+          ? {
+              id: task.id,
+              name: task.name,
+              description: task.description,
+              category: task.category.name,
+              estimatedManHours: task.estimatedManHours,
+              status: task.status,
+              photos: task.photos.map((p) => ({ id: p.id, url: p.url })),
+            }
+          : null,
+      };
+    })
   );
 });
 
@@ -790,15 +1098,17 @@ router.post("/invitations/:id/respond", async (req, res) => {
   res.json({ ok: true });
 });
 
-// 4.5 - members may leave freely while recruiting.
+// 4.5 - members may leave freely while recruiting. Also allowed once a cycle
+// has COMPLETED and the leader hasn't yet started a new one or disbanded -
+// members shouldn't be stuck waiting on the leader forever.
 router.post("/groups/:id/leave", async (req, res) => {
   const group = await prisma.group.findUnique({ where: { id: req.params.id } });
   if (!group) return res.status(404).json({ error: "Group not found." });
   if (group.leaderId === req.userId) {
     return res.status(400).json({ error: "As the leader, disband the group instead of leaving." });
   }
-  if (!["RECRUITING", "READY"].includes(group.state)) {
-    return res.status(400).json({ error: "You can only leave while the group is recruiting." });
+  if (!["RECRUITING", "READY", "COMPLETED"].includes(group.state)) {
+    return res.status(400).json({ error: "You can't leave while the group is actively working through a cycle." });
   }
 
   const member = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: req.userId! } } });
@@ -806,10 +1116,14 @@ router.post("/groups/:id/leave", async (req, res) => {
 
   const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
   const myTask = cycle ? await prisma.task.findFirst({ where: { cycleId: cycle.id, ownerId: req.userId } }) : null;
+  // Only revert a task that hasn't actually been done yet - a COMPLETED
+  // group's task is already ARCHIVED and should stay that way, not get
+  // resurrected as if the work never happened.
+  const shouldReleaseTask = myTask && myTask.status !== "ARCHIVED";
 
   await prisma.$transaction(async (tx) => {
     await tx.groupMember.update({ where: { id: member.id }, data: { status: "LEFT", leftAt: new Date() } });
-    if (myTask) await tx.task.update({ where: { id: myTask.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } });
+    if (shouldReleaseTask) await tx.task.update({ where: { id: myTask!.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } });
   });
 
   if (group.state === "READY" && cycle) {
@@ -823,6 +1137,214 @@ router.post("/groups/:id/leave", async (req, res) => {
   await postSystemMessage(group.id, `${leavingUser?.firstName} left the group.`);
 
   res.json({ ok: true });
+});
+
+// Leader removes a member outright - only while nothing has actually
+// started yet. Once WORKING, this same outcome has to go through a vote
+// (below) instead, since kicking someone mid-cycle affects everyone.
+router.post("/groups/:id/members/:userId/remove", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+  if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can remove a member." });
+  if (req.params.userId === group.leaderId) return res.status(400).json({ error: "You can't remove yourself as leader - disband instead." });
+  if (!["RECRUITING", "READY"].includes(group.state)) {
+    return res.status(400).json({ error: "Once the group has started, removing someone takes a member vote instead." });
+  }
+
+  const member = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: req.params.userId } } });
+  if (!member || member.status !== "ACTIVE") return res.status(404).json({ error: "That person isn't a member of this group." });
+
+  const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
+  const theirTask = cycle ? await prisma.task.findFirst({ where: { cycleId: cycle.id, ownerId: req.params.userId } }) : null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.groupMember.update({ where: { id: member.id }, data: { status: "LEFT", leftAt: new Date() } });
+    if (theirTask) await tx.task.update({ where: { id: theirTask.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } });
+  });
+
+  if (group.state === "READY" && cycle) {
+    const approvedForCycle = await prisma.task.count({ where: { cycleId: cycle.id, status: "APPROVED" } });
+    if (approvedForCycle < group.sizeMin) {
+      await prisma.group.update({ where: { id: group.id }, data: { state: "RECRUITING" } });
+    }
+  }
+
+  const removedUser = await prisma.user.findUnique({ where: { id: req.params.userId } });
+  await postSystemMessage(group.id, `${removedUser?.firstName} was removed from the group.`);
+  await notifyUser(req.params.userId, "REMOVED_FROM_GROUP", "Removed from group", `You were removed from ${group.name}.`, {
+    groupId: group.id,
+  });
+
+  res.json({ ok: true });
+});
+
+// ---------- Vote-kick (once a group is WORKING, removal takes everyone else
+// agreeing rather than a leader decision) ----------
+
+async function releaseKickedMember(groupId: string, targetUserId: string) {
+  const group = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
+  const cycle = await getCurrentCycle(groupId, group.currentCycleNumber);
+  const theirTask = cycle ? await prisma.task.findFirst({ where: { cycleId: cycle.id, ownerId: targetUserId } }) : null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.groupMember.update({
+      where: { groupId_userId: { groupId, userId: targetUserId } },
+      data: { status: "LEFT", leftAt: new Date() },
+    });
+    if (theirTask && theirTask.status !== "ARCHIVED") {
+      await tx.task.update({ where: { id: theirTask.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } });
+    }
+  });
+
+  // Drop their task out of the active queue too, so the next person's turn
+  // is correctly next rather than stuck behind someone who's no longer here.
+  if (cycle && theirTask) {
+    const order = parseOrder(cycle);
+    const wasActive = order[0] === theirTask.id;
+    const newOrder = order.filter((taskId) => taskId !== theirTask.id);
+    await saveOrder(cycle.id, newOrder);
+
+    if (wasActive && newOrder.length > 0) {
+      const nextTask = await prisma.task.update({
+        where: { id: newOrder[0] },
+        data: { status: "ACTIVE", activatedAt: new Date() },
+      });
+      await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+    }
+  }
+}
+
+const kickVoteSchema = z.object({ targetUserId: z.string().min(1), reason: z.string().min(1).max(300) });
+
+router.post("/groups/:id/kick-votes", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+  if (group.state !== "WORKING") {
+    return res.status(400).json({ error: "Vote-kicks only apply once the group is actively working through a cycle." });
+  }
+
+  const requesterMember = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: req.userId! } } });
+  if (!requesterMember || requesterMember.status !== "ACTIVE") return res.status(403).json({ error: "Only group members can start a vote." });
+
+  const parsed = kickVoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { targetUserId, reason } = parsed.data;
+
+  if (targetUserId === req.userId) return res.status(400).json({ error: "You can't start a vote against yourself." });
+  if (targetUserId === group.leaderId) return res.status(400).json({ error: "The group leader can't be voted out." });
+
+  const targetMember = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: targetUserId } } });
+  if (!targetMember || targetMember.status !== "ACTIVE") return res.status(404).json({ error: "That person isn't a member of this group." });
+
+  const existing = await prisma.kickVote.findFirst({ where: { groupId: group.id, targetUserId, outcome: null } });
+  if (existing) return res.status(400).json({ error: "There's already a pending vote against this member." });
+
+  const vote = await prisma.kickVote.create({
+    data: {
+      groupId: group.id,
+      targetUserId,
+      initiatorId: req.userId!,
+      reason: reason.trim(),
+      // Starting a vote is itself an implicit yes.
+      ballots: { create: { voterId: req.userId!, choice: "YES" } },
+    },
+  });
+
+  const target = await prisma.user.findUnique({ where: { id: targetUserId } });
+  const initiator = await prisma.user.findUnique({ where: { id: req.userId } });
+  await postSystemMessage(group.id, `${initiator?.firstName} started a vote to remove ${target?.firstName}.`);
+  await notifyGroupMembers(group.id, "KICK_VOTE_STARTED", "Vote to remove a member", `${initiator?.firstName} wants to remove ${target?.firstName}: "${reason.trim()}"`, {
+    excludeUserId: req.userId,
+    extra: { voteId: vote.id },
+  });
+
+  res.status(201).json({ id: vote.id });
+});
+
+async function serializeKickVote(voteId: string) {
+  const vote = await prisma.kickVote.findUnique({
+    where: { id: voteId },
+    include: { target: true, initiator: true, ballots: { include: { voter: true } } },
+  });
+  if (!vote) return null;
+
+  const activeMembers = await prisma.groupMember.findMany({ where: { groupId: vote.groupId, status: "ACTIVE" } });
+  // Everyone except the target has a say; the initiator's yes is already cast.
+  const requiredVoterIds = activeMembers.map((m) => m.userId).filter((id) => id !== vote.targetUserId);
+
+  return {
+    id: vote.id,
+    groupId: vote.groupId,
+    target: { id: vote.targetUserId, firstName: vote.target.firstName },
+    initiator: { id: vote.initiatorId, firstName: vote.initiator.firstName },
+    reason: vote.reason,
+    outcome: vote.outcome,
+    createdAt: vote.createdAt,
+    requiredVotes: requiredVoterIds.length,
+    ballots: vote.ballots.map((b) => ({ voterId: b.voterId, firstName: b.voter.firstName, choice: b.choice })),
+  };
+}
+
+router.get("/groups/:id/kick-votes", async (req, res) => {
+  const votes = await prisma.kickVote.findMany({ where: { groupId: req.params.id, outcome: null }, orderBy: { createdAt: "desc" } });
+  res.json((await Promise.all(votes.map((v) => serializeKickVote(v.id)))).filter(Boolean));
+});
+
+router.get("/kick-votes/:voteId", async (req, res) => {
+  const vote = await serializeKickVote(req.params.voteId);
+  if (!vote) return res.status(404).json({ error: "Vote not found." });
+  res.json(vote);
+});
+
+const kickBallotSchema = z.object({ choice: z.enum(["YES", "NO"]) });
+
+router.post("/kick-votes/:voteId/ballot", async (req, res) => {
+  const vote = await prisma.kickVote.findUnique({ where: { id: req.params.voteId } });
+  if (!vote || vote.outcome != null) return res.status(404).json({ error: "This vote is no longer open." });
+  if (req.userId === vote.targetUserId) return res.status(403).json({ error: "You can't vote on your own removal." });
+
+  const member = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: vote.groupId, userId: req.userId! } } });
+  if (!member || member.status !== "ACTIVE") return res.status(403).json({ error: "Only group members can vote." });
+
+  const parsed = kickBallotSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const existingBallot = await prisma.kickBallot.findUnique({ where: { voteId_voterId: { voteId: vote.id, voterId: req.userId! } } });
+  if (existingBallot) return res.status(400).json({ error: "You've already voted." });
+
+  await prisma.kickBallot.create({ data: { voteId: vote.id, voterId: req.userId!, choice: parsed.data.choice } });
+
+  const group = await prisma.group.findUniqueOrThrow({ where: { id: vote.groupId } });
+  const target = await prisma.user.findUnique({ where: { id: vote.targetUserId } });
+
+  if (parsed.data.choice === "NO") {
+    await prisma.kickVote.update({ where: { id: vote.id }, data: { outcome: "FAILED", resolvedAt: new Date() } });
+    await postSystemMessage(vote.groupId, `The vote to remove ${target?.firstName} did not pass.`);
+    await notifyGroupMembers(vote.groupId, "KICK_VOTE_OUTCOME", "Vote failed", `The vote to remove ${target?.firstName} did not pass.`, {
+      extra: { voteId: vote.id },
+    });
+    return res.json({ ok: true, outcome: "FAILED" });
+  }
+
+  const activeMembers = await prisma.groupMember.findMany({ where: { groupId: vote.groupId, status: "ACTIVE" } });
+  const requiredVoterIds = activeMembers.map((m) => m.userId).filter((id) => id !== vote.targetUserId);
+  const yesBallots = await prisma.kickBallot.findMany({ where: { voteId: vote.id, choice: "YES" } });
+  const allAgreed = requiredVoterIds.every((id) => yesBallots.some((b) => b.voterId === id));
+
+  if (allAgreed) {
+    await prisma.kickVote.update({ where: { id: vote.id }, data: { outcome: "REMOVED", resolvedAt: new Date() } });
+    await releaseKickedMember(vote.groupId, vote.targetUserId);
+    await postSystemMessage(vote.groupId, `${target?.firstName} was removed from the group by member vote.`);
+    await notifyGroupMembers(vote.groupId, "KICK_VOTE_OUTCOME", "Member removed", `${target?.firstName} was removed from ${group.name} by member vote.`, {
+      extra: { voteId: vote.id },
+    });
+    await notifyUser(vote.targetUserId, "REMOVED_FROM_GROUP", "Removed from group", `You were removed from ${group.name} by member vote.`, {
+      groupId: group.id,
+    });
+    return res.json({ ok: true, outcome: "REMOVED" });
+  }
+
+  res.json({ ok: true, outcome: null });
 });
 
 // 4.5/4.12 - leader disbands (during recruiting, or after a cycle completes).
@@ -870,19 +1392,19 @@ router.post("/groups/:id/start-work", async (req, res) => {
     return res.status(400).json({ error: `You need at least ${group.sizeMin} members with an approved task to start.` });
   }
 
-  const orderedMembers = computeDefaultOrder(membersWithTask);
+  const orderedMembers = await computeDefaultOrder(membersWithTask);
   const order = orderedMembers.map((m) => cycleTasks.find((t) => t.ownerId === m.userId)!.id);
 
   await prisma.$transaction(async (tx) => {
     await tx.groupCycle.update({ where: { id: cycle.id }, data: { startedAt: new Date(), taskOrder: JSON.stringify(order) } });
-    await tx.task.update({ where: { id: order[0] }, data: { status: "ACTIVE" } });
+    await tx.task.update({ where: { id: order[0] }, data: { status: "ACTIVE", activatedAt: new Date() } });
     await tx.group.update({ where: { id: group.id }, data: { state: "WORKING" } });
   });
 
   const firstTask = cycleTasks.find((t) => t.id === order[0])!;
-  await postSystemMessage(group.id, "Start Work — the cycle has begun!");
+  await postSystemMessage(group.id, "Start Work - the cycle has begun!");
   await notifyGroupMembers(group.id, "START_WORK", "Work has started", `${group.name} has started this cycle.`);
-  await notifyUser(firstTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in ${group.name} — schedule a work date.`);
+  await notifyUser(firstTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in ${group.name}. Schedule a work date within 2 weeks.`);
 
   res.json(await serializeGroupDetail(group.id, req.userId!));
 });
@@ -909,14 +1431,14 @@ router.post("/groups/:id/tasks/:taskId/defer", async (req, res) => {
   const [first, second, ...rest] = order;
   const newOrder = [second, first, ...rest];
   await prisma.$transaction([
-    prisma.task.update({ where: { id: second }, data: { status: "ACTIVE" } }),
+    prisma.task.update({ where: { id: second }, data: { status: "ACTIVE", activatedAt: new Date() } }),
     prisma.task.update({ where: { id: first }, data: { status: "APPROVED" } }),
   ]);
   await saveOrder(ctx.cycle.id, newOrder);
 
   const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: second } });
   await postSystemMessage(req.params.id, `${task.name} was deferred. It's now ${nextTask.name}'s turn.`);
-  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in this group — schedule a work date.`);
+  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
 
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
 });
@@ -940,8 +1462,8 @@ router.post("/groups/:id/tasks/:taskId/forgo", async (req, res) => {
   await postSystemMessage(req.params.id, `${task.name} was forgone for this cycle.`);
   if (wasActive && newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
-    await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE" } });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in this group — schedule a work date.`);
+    await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE", activatedAt: new Date() } });
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
   }
   await saveOrder(ctx.cycle.id, newOrder);
 
@@ -1022,6 +1544,7 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   // 3.10 - a completed task becomes permanently archived immediately.
   const newOrder = order.slice(1);
   await prisma.task.update({ where: { id: task.id }, data: { status: "ARCHIVED" } });
+  await deletePhotosForTask(task.id);
   await postSystemMessage(req.params.id, `${task.name} was completed! 🎉`);
   await notifyGroupMembers(req.params.id, "TASK_COMPLETED", "Task completed", `${task.name} was marked complete.`);
   for (const userId of attendedUserIds) {
@@ -1032,8 +1555,8 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   }
   if (newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
-    await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE" } });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in this group — schedule a work date.`);
+    await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE", activatedAt: new Date() } });
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
   }
   await saveOrder(ctx.cycle.id, newOrder);
 
@@ -1082,6 +1605,19 @@ router.post("/groups/:id/tasks/:taskId/rate-host", async (req, res) => {
       visible: alreadyEnded,
     },
   });
+
+  // 6.7 - the host already rated every attendee at completion time; once
+  // every expected attendee has rated the host back too, this task's
+  // ratings are instantly complete - reveal them now instead of waiting for
+  // the whole cycle to end.
+  const workerRatings = await prisma.ratingEvent.findMany({
+    where: { taskId: task.id, type: "WORKER", isNoShow: false, isValidAbsence: false },
+  });
+  const hostRatings = await prisma.ratingEvent.findMany({ where: { taskId: task.id, type: "HOST" } });
+  const allRated = workerRatings.length > 0 && workerRatings.every((w) => hostRatings.some((h) => h.raterId === w.rateeId));
+  if (allRated) {
+    await prisma.ratingEvent.updateMany({ where: { taskId: task.id }, data: { visible: true } });
+  }
 
   res.json({ ok: true });
 });

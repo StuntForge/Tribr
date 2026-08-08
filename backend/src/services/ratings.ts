@@ -58,6 +58,37 @@ export async function computeRatingSummary(userId: string): Promise<RatingSummar
   return { overallRating, workerRating, hostRating, completedCycles };
 }
 
+export interface RatingBreakdown {
+  worker: { performance: number | null; attitude: number | null; reliability: number | null; count: number };
+  host: { hosting: number | null; accuracy: number | null; attitude: number | null; count: number };
+}
+
+// Sub-score breakdown behind the headline Worker/Host numbers - a plain
+// (non-recency-weighted) average per column is clearer for a "why is my
+// rating what it is" detail view than reproducing the decay math per-column.
+export async function computeRatingBreakdown(userId: string): Promise<RatingBreakdown> {
+  const events = await prisma.ratingEvent.findMany({ where: { rateeId: userId, visible: true } });
+  const avg = (values: number[]) => (values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null);
+
+  const worker = events.filter((e) => e.type === "WORKER");
+  const host = events.filter((e) => e.type === "HOST");
+
+  return {
+    worker: {
+      performance: avg(worker.map((e) => e.scoreA)),
+      attitude: avg(worker.map((e) => e.scoreB)),
+      reliability: avg(worker.map((e) => e.scoreC)),
+      count: worker.length,
+    },
+    host: {
+      hosting: avg(host.map((e) => e.scoreA)),
+      accuracy: avg(host.map((e) => e.scoreB)),
+      attitude: avg(host.map((e) => e.scoreC)),
+      count: host.length,
+    },
+  };
+}
+
 // 6.7 - hidden ratings become part of public reputation once the cycle
 // they belong to ends (normal completion or dissolution).
 export async function revealCycleRatings(cycleId: string) {

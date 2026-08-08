@@ -6,15 +6,22 @@ export interface GroupSummary {
   id: string;
   name: string;
   description: string;
-  category: string | null;
+  categories: string[];
   locationLabel: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
   approxDistanceMiles: number | null;
   sizeMin: number;
   sizeMax: number;
   memberCount: number;
   leaderName: string | null;
+  leaderIsPro: boolean;
   averageMemberRating: number | null;
   state: GroupState;
+  createdAt: string;
+  verifiedOnly: boolean;
+  minRating: number | null;
+  eligibleToApply: boolean;
 }
 
 export interface MyGroupSummary {
@@ -29,7 +36,9 @@ export interface GroupMemberInfo {
   userId: string;
   firstName: string | null;
   isLeader: boolean;
+  isPro: boolean;
   joinedAt: string;
+  rating: number | null;
   currentTask: { id: string; name: string; status: string; category: string; estimatedManHours: number } | null;
 }
 
@@ -46,7 +55,9 @@ export interface GroupDetail {
   id: string;
   name: string;
   description: string;
-  category: { id: string; name: string } | null;
+  categories: { id: string; name: string }[];
+  verifiedOnly: boolean;
+  minRating: number | null;
   locationLabel: string | null;
   preferredAgeMin: number | null;
   preferredAgeMax: number | null;
@@ -61,6 +72,7 @@ export interface GroupDetail {
   isLeader: boolean;
   isMember: boolean;
   memberCount: number;
+  averageMemberRating: number | null;
   pendingApplicationCount?: number;
   members: GroupMemberInfo[];
   queue: QueueEntry[];
@@ -70,7 +82,7 @@ export interface GroupDetail {
 
 export interface PendingApplication {
   id: string;
-  applicant: { id: string; firstName: string | null };
+  applicant: { id: string; firstName: string | null; isPro: boolean };
   task: { id: string; name: string; category: string; estimatedManHours: number };
   message: string | null;
   createdAt: string;
@@ -78,6 +90,21 @@ export interface PendingApplication {
 
 export function getMyGroups() {
   return apiFetch<MyGroupSummary[]>("/api/groups/mine");
+}
+
+export interface GroupHistoryEntry {
+  id: string;
+  name: string;
+  state: GroupState;
+  isLeader: boolean;
+  myStatus: "ACTIVE" | "LEFT";
+  memberCount: number;
+  joinedAt: string;
+  leftAt: string | null;
+}
+
+export function getGroupHistory() {
+  return apiFetch<GroupHistoryEntry[]>("/api/me/group-history");
 }
 
 export interface BrowseGroupsFilters {
@@ -106,10 +133,14 @@ export function getGroup(id: string) {
 export interface CreateGroupInput {
   name: string;
   description: string;
-  categoryId?: string;
+  categoryIds: string[];
   sizeMin: number;
   sizeMax: number;
   taskId: string;
+  verifiedOnly?: boolean;
+  minRating?: number;
+  preferredAgeMin?: number;
+  preferredAgeMax?: number;
 }
 
 export function createGroup(input: CreateGroupInput) {
@@ -139,6 +170,50 @@ export function decideApplication(
   return apiFetch<{ ok: true }>(`/api/groups/${groupId}/applications/${appId}/decision`, {
     method: "POST",
     body: { decision, reason, suggestedTaskId },
+  });
+}
+
+export function removeMember(groupId: string, userId: string) {
+  return apiFetch<{ ok: true }>(`/api/groups/${groupId}/members/${userId}/remove`, { method: "POST" });
+}
+
+export interface KickVoteBallot {
+  voterId: string;
+  firstName: string | null;
+  choice: "YES" | "NO";
+}
+
+export interface KickVote {
+  id: string;
+  groupId: string;
+  target: { id: string; firstName: string | null };
+  initiator: { id: string; firstName: string | null };
+  reason: string;
+  outcome: "REMOVED" | "FAILED" | null;
+  createdAt: string;
+  requiredVotes: number;
+  ballots: KickVoteBallot[];
+}
+
+export function startKickVote(groupId: string, targetUserId: string, reason: string) {
+  return apiFetch<{ id: string }>(`/api/groups/${groupId}/kick-votes`, {
+    method: "POST",
+    body: { targetUserId, reason },
+  });
+}
+
+export function getGroupKickVotes(groupId: string) {
+  return apiFetch<KickVote[]>(`/api/groups/${groupId}/kick-votes`);
+}
+
+export function getKickVote(voteId: string) {
+  return apiFetch<KickVote>(`/api/kick-votes/${voteId}`);
+}
+
+export function castKickBallot(voteId: string, choice: "YES" | "NO") {
+  return apiFetch<{ ok: true; outcome: string | null }>(`/api/kick-votes/${voteId}/ballot`, {
+    method: "POST",
+    body: { choice },
   });
 }
 
@@ -212,13 +287,14 @@ export function castDissolutionBallot(groupId: string, voteId: string, choice: "
 export interface PreviousMember {
   userId: string;
   firstName: string | null;
+  activeTasks: { id: string; name: string; category: string }[];
 }
 
 export function getPreviousMembers(groupId: string) {
   return apiFetch<PreviousMember[]>(`/api/groups/${groupId}/previous-members`);
 }
 
-export function inviteMember(groupId: string, invitedUserId: string, suggestedTaskId?: string) {
+export function inviteMember(groupId: string, invitedUserId: string, suggestedTaskId: string) {
   return apiFetch<{ id: string }>(`/api/groups/${groupId}/invitations`, {
     method: "POST",
     body: { invitedUserId, suggestedTaskId },
@@ -227,7 +303,22 @@ export function inviteMember(groupId: string, invitedUserId: string, suggestedTa
 
 export interface MyInvitation {
   id: string;
-  group: { id: string; name: string; category: string | null; leaderName: string | null };
+  group: {
+    id: string;
+    name: string;
+    categories: string[];
+    leaderName: string | null;
+    leaderIsPro: boolean;
+    memberCount: number;
+    sizeMin: number;
+    sizeMax: number;
+    preferredAgeMin: number | null;
+    preferredAgeMax: number | null;
+    preferredGender: string | null;
+    minRating: number | null;
+    verifiedOnly: boolean;
+    approxDistanceMiles: number | null;
+  };
   suggestedTask: { id: string; name: string } | null;
 }
 
@@ -235,6 +326,26 @@ export function getMyInvitations() {
   return apiFetch<MyInvitation[]>("/api/me/invitations");
 }
 
-export function respondToInvitation(invitationId: string, accept: boolean, taskId?: string) {
-  return apiFetch<{ ok: true }>(`/api/invitations/${invitationId}/respond`, { method: "POST", body: { accept, taskId } });
+export function respondToInvitation(invitationId: string, accept: boolean) {
+  return apiFetch<{ ok: true }>(`/api/invitations/${invitationId}/respond`, { method: "POST", body: { accept } });
+}
+
+export interface GroupCurrentTaskMember {
+  userId: string;
+  firstName: string | null;
+  isLeader: boolean;
+  isPro: boolean;
+  task: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    estimatedManHours: number;
+    status: string;
+    photos: { id: string; url: string }[];
+  } | null;
+}
+
+export function getGroupCurrentTasks(groupId: string) {
+  return apiFetch<GroupCurrentTaskMember[]>(`/api/groups/${groupId}/current-tasks`);
 }
