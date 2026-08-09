@@ -262,7 +262,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
-      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={128} aspectRatio={1388 / 876} rounded={radii.lg} />}>
+      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={150} aspectRatio={1388 / 876} />}>
         <View style={styles.topRow}>
           <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
