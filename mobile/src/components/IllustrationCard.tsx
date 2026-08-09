@@ -1,31 +1,29 @@
 import React from "react";
-import { Image, ImageSourcePropType, StyleSheet, View } from "react-native";
-import { radii } from "../theme";
+import { Image, ImageSourcePropType, StyleSheet } from "react-native";
 
-// The supplied illustrations are exported on a dark "glow" card (only the
-// four corners are truly transparent - see scripts/process-illustrations.js
-// for why a clean cutout isn't possible without damaging dark hair/clothing
-// detail), so they're shown inside a matching near-black rounded card
-// rather than directly on light backgrounds.
+// The illustrations are processed (scripts/process-illustrations.js) to a
+// real transparent background via flood-fill, so they sit directly on
+// whatever's behind them - no card/backdrop needed.
 export default function IllustrationCard({
   source,
   width,
   aspectRatio,
-  rounded = radii.lg,
 }: {
   source: ImageSourcePropType;
   width: number;
   aspectRatio: number;
+  /** @deprecated no longer renders a card background; kept so existing call sites don't need edits. */
   rounded?: number;
 }) {
   return (
-    <View style={[styles.card, { width, height: width / aspectRatio, borderRadius: rounded }]}>
-      <Image source={source} style={styles.image} resizeMode="cover" />
-    </View>
+    <Image
+      source={source}
+      style={[styles.image, { width, height: width / aspectRatio }]}
+      resizeMode="contain"
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: "#0B0F0C", overflow: "hidden" },
-  image: { width: "100%", height: "100%" },
+  image: {},
 });

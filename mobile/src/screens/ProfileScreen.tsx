@@ -31,7 +31,7 @@ export default function ProfileScreen({ navigation }: any) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <WaveHeader
         contentStyle={styles.headerContent}
-        illustration={<Image source={HEADER_DECORATION} style={styles.headerDecoration} resizeMode="cover" />}
+        illustration={<Image source={HEADER_DECORATION} style={styles.headerDecoration} resizeMode="contain" />}
       >
         <AnimatedPressable style={styles.avatarWrap} onPress={() => navigation.navigate("EditProfile")}>
           <View style={styles.avatarRing}>
@@ -108,7 +108,7 @@ export default function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },
-  headerDecoration: { width: 100, height: 114, opacity: 0.4, borderRadius: radii.lg },
+  headerDecoration: { width: 100, height: 114, opacity: 0.55 },
   headerContent: { alignItems: "center" },
   avatarWrap: { marginBottom: spacing.sm },
   avatarRing: {
