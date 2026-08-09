@@ -117,7 +117,7 @@ export default function NotificationsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={110} aspectRatio={979 / 790} rounded={radii.lg} />}>
+      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={125} aspectRatio={1127 / 1022} />}>
         <View style={styles.topRow}>
           <TribrLogo />
         </View>

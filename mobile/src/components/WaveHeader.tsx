@@ -26,12 +26,12 @@ export default function WaveHeader({
   return (
     <View style={[styles.wrap, style]}>
       <View style={[styles.content, { paddingTop: insets.top + 12 }, contentStyle]}>{children}</View>
-      {illustration && <View style={styles.illustration}>{illustration}</View>}
       <View style={styles.waveBand} pointerEvents="none">
         <Svg width="100%" height={WAVE_BAND} viewBox="0 0 400 34" preserveAspectRatio="none">
           <Path d="M0,16 C110,40 290,-10 400,14 L400,34 L0,34 Z" fill={colors.background} />
         </Svg>
       </View>
+      {illustration && <View style={styles.illustration}>{illustration}</View>}
     </View>
   );
 }
@@ -48,8 +48,8 @@ const styles = StyleSheet.create({
   },
   illustration: {
     position: "absolute",
-    bottom: 18,
-    right: 12,
+    bottom: 30,
+    right: 10,
   },
   waveBand: {
     position: "absolute",

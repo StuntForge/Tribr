@@ -107,7 +107,7 @@ export default function GroupsHomeScreen({ navigation }: any) {
               icon="people"
               badgeIcon="hand-left"
               image={GROUPS_EMPTY_IMAGE}
-              imageAspectRatio={1514 / 967}
+              imageAspectRatio={1388 / 831}
               title="You're not in a Tribe yet"
               body={'Tap "Find a Tribe" above to apply with one of your tasks, or form your own Tribe if you\'re a Subscriber.'}
             >

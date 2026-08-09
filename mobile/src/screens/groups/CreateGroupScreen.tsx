@@ -59,7 +59,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   });
 
   const Header = (
-    <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={155} aspectRatio={1508 / 966} />}>
+    <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={170} aspectRatio={1449 / 796} />}>
       <View style={styles.topRow}>
         <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
