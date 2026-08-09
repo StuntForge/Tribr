@@ -1,17 +1,14 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet } from "react-native";
 
-export default function TribrLogo({ light = true }: { light?: boolean }) {
-  return (
-    <View style={styles.row}>
-      <Image source={require("../../assets/icon.png")} style={styles.mark} resizeMode="contain" />
-      <Text style={[styles.word, { color: light ? "#fff" : "#2B2420" }]}>Tribr</Text>
-    </View>
-  );
+const LOGO = require("../../assets/illustrations/processed/tribr-logo-header.png");
+const ASPECT_RATIO = 1328 / 316;
+const HEIGHT = 40;
+
+export default function TribrLogo() {
+  return <Image source={LOGO} style={styles.logo} resizeMode="contain" />;
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  mark: { width: 56, height: 56 },
-  word: { fontSize: 26, fontWeight: "800" },
+  logo: { height: HEIGHT, width: HEIGHT * ASPECT_RATIO },
 });
