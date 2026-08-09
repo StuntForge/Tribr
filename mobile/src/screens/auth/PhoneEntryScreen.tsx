@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { requestCode } from "../../api/auth";
 import { colors, spacing } from "../../theme";
 
@@ -27,6 +27,7 @@ export default function PhoneEntryScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <Image source={require("../../../assets/icon.png")} style={styles.logo} resizeMode="contain" />
       <Text style={styles.title}>Tribr</Text>
       <Text style={styles.subtitle}>
         Trade your labour, not your money. Enter your mobile number to get started.
@@ -55,7 +56,8 @@ export default function PhoneEntryScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, justifyContent: "center" },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
+  logo: { width: 96, height: 96, alignSelf: "center", marginBottom: spacing.md },
+  title: { fontSize: 28, fontWeight: "700", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   subtitle: { fontSize: 15, color: colors.textMuted, marginBottom: spacing.lg },
   input: {
     backgroundColor: colors.surface,

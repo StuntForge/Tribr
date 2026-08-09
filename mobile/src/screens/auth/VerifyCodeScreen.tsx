@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { verifyCode, requestCode } from "../../api/auth";
 import { useAuth } from "../../context/AuthContext";
 import { colors, spacing } from "../../theme";
@@ -37,6 +37,7 @@ export default function VerifyCodeScreen({ route }: any) {
 
   return (
     <View style={styles.container}>
+      <Image source={require("../../../assets/icon.png")} style={styles.logo} resizeMode="contain" />
       <Text style={styles.title}>Enter the code</Text>
       <Text style={styles.subtitle}>We sent a 6-digit code to {phone}.</Text>
 
@@ -65,7 +66,8 @@ export default function VerifyCodeScreen({ route }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, justifyContent: "center" },
-  title: { fontSize: 24, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
+  logo: { width: 72, height: 72, alignSelf: "center", marginBottom: spacing.md },
+  title: { fontSize: 24, fontWeight: "700", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   subtitle: { fontSize: 15, color: colors.textMuted, marginBottom: spacing.lg },
   input: {
     backgroundColor: colors.surface,

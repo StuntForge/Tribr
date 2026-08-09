@@ -14,7 +14,7 @@
     "android": {
       "package": "com.tribr.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -43,6 +43,15 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Allow Tribr to use your location to find helpers and groups near you."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#FAF6EF"
         }
       ]
     ],
