@@ -18,8 +18,12 @@ import WaveHeader from "../components/WaveHeader";
 import TribrLogo from "../components/TribrLogo";
 import SegmentedTabs from "../components/SegmentedTabs";
 import EmptyState from "../components/EmptyState";
+import IllustrationCard from "../components/IllustrationCard";
 import { InfoCard, InfoCardRow } from "../components/InfoCard";
 import { colors, radii, shadows, spacing } from "../theme";
+
+const HEADER_IMAGE = require("../../assets/illustrations/processed/notifications-header.png");
+const EMPTY_IMAGE = require("../../assets/illustrations/processed/notifications-empty-state.png");
 
 type Tab = "updates" | "action";
 
@@ -113,12 +117,12 @@ export default function NotificationsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="notifications" size={28} color="rgba(255,255,255,0.85)" /></View>}>
+      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={110} aspectRatio={979 / 790} rounded={radii.lg} />}>
         <View style={styles.topRow}>
           <TribrLogo />
         </View>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <Text style={styles.subtitle}>Stay up to date with what matters in your groups.</Text>
+        <Text style={styles.subtitle}>Stay up to date with what matters in your Tribes.</Text>
       </WaveHeader>
 
       <View style={styles.tabRow}>
@@ -155,10 +159,10 @@ export default function NotificationsScreen({ navigation }: any) {
             refreshing={isRefetching}
             onRefresh={refetch}
             ListEmptyComponent={
-              <EmptyState icon="notifications" badgeIcon="paper-plane" title="No new notifications" body="Nothing here yet. You'll see invitations, approvals and reminders as they happen.">
+              <EmptyState icon="notifications" badgeIcon="paper-plane" image={EMPTY_IMAGE} imageAspectRatio={1069 / 859} title="No new notifications" body="Nothing here yet. You'll see invitations, approvals and reminders as they happen.">
                 <View style={styles.infoCardWrap}>
                   <InfoCard>
-                    <InfoCardRow icon="people" title="What you'll see here" body="Invitations - when someone invites you to join a group." />
+                    <InfoCardRow icon="people" title="What you'll see here" body="Invitations - when someone invites you to join a Tribe." />
                     <InfoCardRow icon="checkmark-circle" body="Approvals - when your request to join is approved." divider />
                     <InfoCardRow icon="calendar" body="Reminders - upcoming work dates and deadlines." divider />
                   </InfoCard>

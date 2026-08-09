@@ -30,8 +30,11 @@ import WaveHeader from "../../components/WaveHeader";
 import AnimatedPressable from "../../components/AnimatedPressable";
 import FieldLabel from "../../components/FieldLabel";
 import StepperInput from "../../components/StepperInput";
+import IllustrationCard from "../../components/IllustrationCard";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, spacing } from "../../theme";
+import { colors, radii, spacing } from "../../theme";
+
+const HEADER_IMAGE = require("../../../assets/illustrations/processed/add-a-task-header.png");
 
 export default function CreateEditTaskScreen({ route, navigation }: any) {
   const taskId: string | undefined = route.params?.taskId;
@@ -259,7 +262,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
-      <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="construct" size={30} color="rgba(255,255,255,0.85)" /></View>}>
+      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={128} aspectRatio={1388 / 876} rounded={radii.lg} />}>
         <View style={styles.topRow}>
           <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -352,7 +355,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
           />
         </>
       )}
-      <Text style={styles.hint}>Your exact address is only shared with the group once a work date is confirmed.</Text>
+      <Text style={styles.hint}>Your exact address is only shared with the Tribe once a work date is confirmed.</Text>
 
       <FieldLabel icon="clipboard" label="Notes (optional)" />
       <TextInput

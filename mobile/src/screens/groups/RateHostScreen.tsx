@@ -36,7 +36,7 @@ export default function RateHostScreen({ route, navigation }: any) {
         <View style={styles.contextCard}>
           {group && (
             <View style={styles.contextRow}>
-              <Text style={styles.contextLabel}>Group</Text>
+              <Text style={styles.contextLabel}>Tribe</Text>
               <Text style={styles.contextValue}>{group.name}</Text>
             </View>
           )}

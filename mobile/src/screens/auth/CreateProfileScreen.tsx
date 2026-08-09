@@ -102,7 +102,7 @@ export default function CreateProfileScreen() {
     >
       <Text style={styles.title}>Create your profile</Text>
       <Text style={styles.subtitle}>
-        This builds the trust every group relies on. Your exact address is never shown to anyone.
+        This builds the trust every Tribe relies on. Your exact address is never shown to anyone.
       </Text>
 
       <TouchableOpacity style={styles.photoPicker} onPress={pickPhoto}>
@@ -135,7 +135,7 @@ export default function CreateProfileScreen() {
       </View>
 
       <Text style={styles.label}>Postcode</Text>
-      <Text style={styles.hint}>Used to find groups and helpers near you. Your exact address is never shown.</Text>
+      <Text style={styles.hint}>Used to find Tribes and helpers near you. Your exact address is never shown.</Text>
       <PostcodeInput
         postcode={postcode}
         onChangePostcode={setPostcode}

@@ -14,12 +14,14 @@ import EmptyState from "../../components/EmptyState";
 import { InfoCard, InfoCardRow } from "../../components/InfoCard";
 import { colors, radii, spacing } from "../../theme";
 
+const EMPTY_IMAGE = require("../../../assets/illustrations/processed/task-library-empty-state.png");
+
 const STATUS_LABEL: Record<TaskStatus, string> = {
   DRAFT: "Draft",
   AVAILABLE: "Available",
-  SUBMITTED: "Submitted to group",
+  SUBMITTED: "Submitted to Tribe",
   APPROVED: "Assigned",
-  ACTIVE: "Active in group",
+  ACTIVE: "Active in Tribe",
   COMPLETED: "Completed",
   ARCHIVED: "Completed",
   FORGONE: "Forgone this cycle",
@@ -162,6 +164,8 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
             <EmptyState
               icon="clipboard"
               badgeIcon="leaf"
+              image={EMPTY_IMAGE}
+              imageAspectRatio={1190 / 948}
               title="You haven't added a task yet"
               body="Add a DIY, gardening or decorating project you'd like help with. This is the task you'll offer in exchange for helping other members with theirs."
             >

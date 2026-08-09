@@ -10,7 +10,10 @@ import WaveHeader from "../../components/WaveHeader";
 import TribrLogo from "../../components/TribrLogo";
 import AnimatedPressable from "../../components/AnimatedPressable";
 import FieldLabel from "../../components/FieldLabel";
+import IllustrationCard from "../../components/IllustrationCard";
 import { colors, radii, spacing } from "../../theme";
+
+const HEADER_IMAGE = require("../../../assets/illustrations/processed/create-group-header.png");
 
 const SIZE_PRESETS: { label: string; min: number; max: number }[] = [
   { label: "3–4", min: 3, max: 4 },
@@ -56,15 +59,15 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   });
 
   const Header = (
-    <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="people" size={30} color="rgba(255,255,255,0.85)" /></View>}>
+    <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={128} aspectRatio={1508 / 966} rounded={radii.lg} />}>
       <View style={styles.topRow}>
         <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </AnimatedPressable>
         <TribrLogo />
       </View>
-      <Text style={styles.title}>Create Group</Text>
-      <Text style={styles.subtitle}>Set up your group and invite others to get things done together.</Text>
+      <Text style={styles.title}>Form a Tribe</Text>
+      <Text style={styles.subtitle}>Set up your Tribe and invite others to get things done together.</Text>
     </WaveHeader>
   );
 
@@ -75,7 +78,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         <View style={styles.center}>
           <Text style={styles.blockedTitle}>Subscribers only</Text>
           <Text style={styles.blockedBody}>
-            Creating a group is a Subscriber feature. Free members can still browse and apply to groups.
+            Forming a Tribe is a Subscriber feature. Free members can still browse and apply to Tribes.
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
@@ -89,7 +92,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   }
 
   const onSubmit = () => {
-    if (!name.trim()) return setError("Give the group a name.");
+    if (!name.trim()) return setError("Give the Tribe a name.");
     if (!description.trim()) return setError("Add a short description.");
     if (categoryIds.length === 0) return setError("Choose at least one allowed category.");
     if (!taskId) return setError("Choose one of your available tasks to represent you.");
@@ -121,7 +124,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
     >
       {Header}
       <View style={styles.form}>
-        <FieldLabel icon="people" label="Group name" />
+        <FieldLabel icon="people" label="Tribe name" />
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Bristol Garden Crew" />
 
         <FieldLabel icon="reader" label="Description" />
@@ -129,7 +132,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
           style={[styles.input, styles.multiline]}
           value={description}
           onChangeText={setDescription}
-          placeholder="What kind of projects is this group for?"
+          placeholder="What kind of projects is this Tribe for?"
           multiline
         />
 
@@ -147,7 +150,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
           ))}
         </View>
 
-        <FieldLabel icon="people-circle" label="Group size" />
+        <FieldLabel icon="people-circle" label="Tribe size" />
         <View style={styles.chipRow}>
           {SIZE_PRESETS.map((preset) => (
             <TouchableOpacity
@@ -184,14 +187,14 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         </View>
 
         <FieldLabel icon="person" label="Preferred age range" />
-        <Text style={styles.hint}>Only people within this range will see or be able to join this group.</Text>
+        <Text style={styles.hint}>Only people within this range will see or be able to join this Tribe.</Text>
         <View style={styles.ageRow}>
           <AgeSelect label="Min age" value={ageMin} onChange={setAgeMin} />
           <Text style={styles.ageSeparator}>–</Text>
           <AgeSelect label="Max age" value={ageMax} onChange={setAgeMax} />
         </View>
 
-        <FieldLabel icon="clipboard" label="Your task for this group" />
+        <FieldLabel icon="clipboard" label="Your task for this Tribe" />
         {categoryIds.length === 0 ? (
           <Text style={styles.hint}>Choose at least one allowed category first.</Text>
         ) : availableTasks.length === 0 ? (
@@ -209,7 +212,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         {error && <Text style={styles.error}>{error}</Text>}
 
         <TouchableOpacity style={styles.primaryButton} onPress={onSubmit} disabled={mutation.isPending}>
-          {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create group</Text>}
+          {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Form Tribe</Text>}
         </TouchableOpacity>
       </View>
     </KeyboardAwareScrollView>

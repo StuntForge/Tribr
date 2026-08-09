@@ -38,11 +38,11 @@ export default function GroupHistoryScreen({ navigation }: any) {
         onRefresh={refetch}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>{tab === "COMPLETED" ? "No completed groups yet" : "No disbanded groups"}</Text>
+            <Text style={styles.emptyTitle}>{tab === "COMPLETED" ? "No completed Tribes yet" : "No disbanded Tribes"}</Text>
             <Text style={styles.emptyBody}>
               {tab === "COMPLETED"
-                ? "Groups that finish a full cycle will show up here."
-                : "Groups that were disbanded will show up here."}
+                ? "Tribes that finish a full cycle will show up here."
+                : "Tribes that were disbanded will show up here."}
             </Text>
           </View>
         }

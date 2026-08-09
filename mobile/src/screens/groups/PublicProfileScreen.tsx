@@ -53,7 +53,7 @@ export default function PublicProfileScreen({ route, navigation }: any) {
   });
 
   const confirmBlock = () => {
-    Alert.alert("Block this member?", "They won't be able to invite, message or apply to your groups.", [
+    Alert.alert("Block this member?", "They won't be able to invite, message or apply to your Tribes.", [
       { text: "Cancel", style: "cancel" },
       { text: "Block", style: "destructive", onPress: () => blockMutation.mutate() },
     ]);

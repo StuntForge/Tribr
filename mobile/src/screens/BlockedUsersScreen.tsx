@@ -10,6 +10,8 @@ import EmptyState from "../components/EmptyState";
 import { InfoCard, InfoCardRow } from "../components/InfoCard";
 import { colors, radii, shadows, spacing } from "../theme";
 
+const EMPTY_IMAGE = require("../../assets/illustrations/processed/blocked-users-empty-state.png");
+
 export default function BlockedUsersScreen({ navigation }: any) {
   const queryClient = useQueryClient();
   const { data: blocked, isLoading } = useQuery({ queryKey: ["blocked-users"], queryFn: getBlockedUsers });
@@ -50,7 +52,7 @@ export default function BlockedUsersScreen({ navigation }: any) {
         data={blocked}
         keyExtractor={(b) => b.userId}
         ListEmptyComponent={
-          <EmptyState icon="shield" badgeIcon="ban" title="No blocked users" body="Members you block won't be able to invite you, message you or apply to your groups.">
+          <EmptyState icon="shield" badgeIcon="ban" image={EMPTY_IMAGE} imageAspectRatio={1075 / 869} title="No blocked users" body="Members you block won't be able to invite you, message you or apply to your Tribes.">
             <View style={styles.infoCardWrap}>
               <InfoCard>
                 <InfoCardRow icon="person-remove" title="Why block someone?" body="Blocking helps keep your experience safe and comfortable." />

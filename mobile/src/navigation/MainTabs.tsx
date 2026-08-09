@@ -97,6 +97,7 @@ export default function MainTabs() {
           const focusedRoute = getFocusedRouteNameFromRoute(route);
           return {
             headerShown: false,
+            tabBarLabel: "Tribes",
             ...(focusedRoute === "GroupChat" ? { tabBarStyle: { display: "none" as const } } : {}),
           };
         }}

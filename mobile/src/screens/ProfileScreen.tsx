@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import AnimatedPressable from "../components/AnimatedPressable";
@@ -9,6 +9,8 @@ import Reveal from "../components/Reveal";
 import WaveHeader from "../components/WaveHeader";
 import IconCircle from "../components/IconCircle";
 import { colors, radii, shadows, spacing, type } from "../theme";
+
+const HEADER_DECORATION = require("../../assets/illustrations/processed/settings-header.png");
 
 export default function ProfileScreen({ navigation }: any) {
   const { profile, signOut } = useAuth();
@@ -27,7 +29,10 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <WaveHeader contentStyle={styles.headerContent}>
+      <WaveHeader
+        contentStyle={styles.headerContent}
+        illustration={<Image source={HEADER_DECORATION} style={styles.headerDecoration} resizeMode="cover" />}
+      >
         <AnimatedPressable style={styles.avatarWrap} onPress={() => navigation.navigate("EditProfile")}>
           <View style={styles.avatarRing}>
             <Avatar name={profile.firstName} photoUrl={profile.profilePhotoUrl} size={92} />
@@ -60,8 +65,8 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
               <Text style={styles.hint}>
                 {profile.subscriptionTier === "SUBSCRIBER"
-                  ? "You're a Subscriber - up to 20 tasks, 6 groups, and you can create groups."
-                  : "You're on the Free plan - 1 task, 1 group, and you can't create groups."}
+                  ? "You're a Subscriber - up to 20 tasks, 6 Tribes, and you can form Tribes."
+                  : "You're on the Free plan - 1 task, 1 Tribe, and you can't form Tribes."}
               </Text>
             </View>
           </View>
@@ -103,6 +108,7 @@ export default function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },
+  headerDecoration: { width: 100, height: 114, opacity: 0.4, borderRadius: radii.lg },
   headerContent: { alignItems: "center" },
   avatarWrap: { marginBottom: spacing.sm },
   avatarRing: {

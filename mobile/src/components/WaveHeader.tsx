@@ -48,8 +48,8 @@ const styles = StyleSheet.create({
   },
   illustration: {
     position: "absolute",
-    top: 0,
-    right: 0,
+    top: 14,
+    right: 16,
   },
   waveBand: {
     position: "absolute",

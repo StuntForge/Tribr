@@ -11,6 +11,8 @@ import EmptyState from "../../components/EmptyState";
 import { InfoCard, InfoCardRow } from "../../components/InfoCard";
 import { colors, radii, spacing } from "../../theme";
 
+const EMPTY_IMAGE = require("../../../assets/illustrations/processed/favourites-empty-state.png");
+
 export default function FavouritesScreen({ navigation }: any) {
   const { data: favourites, isLoading, refetch, isRefetching } = useQuery({ queryKey: ["favourites"], queryFn: getFavourites });
 
@@ -47,10 +49,10 @@ export default function FavouritesScreen({ navigation }: any) {
         refreshing={isRefetching}
         onRefresh={refetch}
         ListEmptyComponent={
-          <EmptyState icon="heart" badgeIcon="person" title="No favourites yet" body="Favourite members you've worked with to invite them back easily next time.">
+          <EmptyState icon="heart" badgeIcon="person" image={EMPTY_IMAGE} imageAspectRatio={1048 / 875} title="No favourites yet" body="Favourite members you've worked with to invite them back easily next time.">
             <View style={styles.infoCardWrap}>
               <InfoCard>
-                <InfoCardRow icon="people" title="Why favourite members?" body="Favourite people you've had great experiences with. They'll appear at the top when inviting to groups." />
+                <InfoCardRow icon="people" title="Why favourite members?" body="Favourite people you've had great experiences with. They'll appear at the top when inviting to Tribes." />
                 <InfoCardRow icon="bulb" body="Tip: You can favourite members from their profile." divider />
               </InfoCard>
             </View>

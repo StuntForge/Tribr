@@ -83,7 +83,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const myActiveQueueTask = group.queue.find((q) => q.isActive && q.ownerId === profile?.id);
 
   const confirmDisband = () => {
-    Alert.alert("Disband group", "This can't be undone. Any pending applications will be released.", [
+    Alert.alert("Disband Tribe", "This can't be undone. Any pending applications will be released.", [
       { text: "Cancel", style: "cancel" },
       { text: "Disband", style: "destructive", onPress: () => disbandMutation.mutate(undefined as never) },
     ]);
@@ -92,8 +92,8 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const confirmLeave = () => {
     if (group.state === "COMPLETED") {
       Alert.alert(
-        "Leave this group?",
-        "You'll lose the option to continue into another cycle with this group. No other downside.",
+        "Leave this Tribe?",
+        "You'll lose the option to continue into another cycle with this Tribe. No other downside.",
         [
           { text: "Cancel", style: "cancel" },
           { text: "Leave", style: "destructive", onPress: () => leaveMutation.mutate(undefined as never) },
@@ -105,7 +105,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   };
 
   const confirmRemoveMember = (userId: string, firstName: string | null) => {
-    Alert.alert(`Kick ${firstName}?`, "They'll be taken out of the group and their current task freed up.", [
+    Alert.alert(`Kick ${firstName}?`, "They'll be taken out of the Tribe and their current task freed up.", [
       { text: "Cancel", style: "cancel" },
       { text: "Kick", style: "destructive", onPress: () => removeMemberMutation.mutate(userId) },
     ]);
@@ -145,7 +145,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
 
       {(group.isMember || group.isLeader) && (
         <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => navigation.navigate("GroupChat", { groupId })}>
-          <Text style={styles.secondaryButtonText}>💬 Group chat</Text>
+          <Text style={styles.secondaryButtonText}>💬 Tribe chat</Text>
         </TouchableOpacity>
       )}
 
@@ -338,7 +338,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 style={styles.input}
                 value={message}
                 onChangeText={setMessage}
-                placeholder="Optional message to the group leader"
+                placeholder="Optional message to the Tribe leader"
               />
               <TouchableOpacity
                 style={styles.primaryButtonSmall}
@@ -406,16 +406,16 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 <Text style={styles.primaryButtonText}>Start new cycle</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.dangerButtonSmall} onPress={() => completeCycleMutation.mutate("DISBAND")}>
-                <Text style={styles.dangerButtonText}>End group & disband</Text>
+                <Text style={styles.dangerButtonText}>End Tribe & disband</Text>
               </TouchableOpacity>
             </>
           )}
           {!group.isLeader && group.isMember && ["RECRUITING", "READY", "COMPLETED"].includes(group.state) && (
             <TouchableOpacity style={styles.dangerButtonSmall} onPress={confirmLeave}>
-              <Text style={styles.dangerButtonText}>Leave group</Text>
+              <Text style={styles.dangerButtonText}>Leave Tribe</Text>
             </TouchableOpacity>
           )}
-          {group.state === "DISBANDED" && <Text style={styles.hint}>This group has ended.</Text>}
+          {group.state === "DISBANDED" && <Text style={styles.hint}>This Tribe has ended.</Text>}
         </View>
         {group.isLeader && group.state !== "READY" && ["RECRUITING", "READY"].includes(group.state) && (
           <Text style={styles.hint}>Start Work unlocks once at least {group.sizeMin} members have an approved task.</Text>
@@ -433,7 +433,7 @@ function PreviousMembersQuickInvite({ groupId, navigation }: { groupId: string; 
 
   return (
     <View style={{ marginTop: spacing.md }}>
-      <Text style={styles.hint}>Previous members of this group:</Text>
+      <Text style={styles.hint}>Previous members of this Tribe:</Text>
       <View style={styles.actionRow}>
         {previousMembers.map((m) => (
           <TouchableOpacity

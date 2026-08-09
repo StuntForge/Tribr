@@ -152,7 +152,7 @@ export default function EditProfileScreen({ navigation }: any) {
       />
 
       <FieldLabel icon="nutrition" label="Dietary requirements" />
-      <Text style={styles.hint}>Only visible to members of groups you belong to.</Text>
+      <Text style={styles.hint}>Only visible to members of Tribes you belong to.</Text>
       <View style={styles.chipRow}>
         {DIETARY_OPTIONS.map((option) => (
           <TouchableOpacity

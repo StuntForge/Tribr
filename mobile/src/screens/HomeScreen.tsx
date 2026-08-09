@@ -15,8 +15,10 @@ import Reveal from "../components/Reveal";
 import WaveHeader from "../components/WaveHeader";
 import TribrLogo from "../components/TribrLogo";
 import IconCircle from "../components/IconCircle";
-import IllustrationCircle from "../components/illustrations/IllustrationCircle";
+import IllustrationCard from "../components/IllustrationCard";
 import { colors, radii, shadows, spacing, type } from "../theme";
+
+const NEXT_TASK_EMPTY_IMAGE = require("../../assets/illustrations/processed/home-next-task-empty-state.png");
 
 export default function HomeScreen({ navigation }: any) {
   const { profile, refreshProfile } = useAuth();
@@ -188,7 +190,7 @@ export default function HomeScreen({ navigation }: any) {
               <Text style={styles.messagesSubtitle}>
                 {unreadGroupCount === 0
                   ? "You're all caught up"
-                  : `${unreadGroupCount} group${unreadGroupCount === 1 ? "" : "s"} with new messages`}
+                  : `${unreadGroupCount} Tribe${unreadGroupCount === 1 ? "" : "s"} with new messages`}
               </Text>
             </View>
             <Ionicons name={messagesOpen && unreadGroupCount > 0 ? "chevron-up" : "chevron-forward"} size={16} color={colors.textMuted} />
@@ -277,24 +279,17 @@ export default function HomeScreen({ navigation }: any) {
             <View style={{ flex: 1 }}>
               <Text style={styles.nextTaskEmptyTitle}>Your next task</Text>
               <Text style={styles.nextTaskEmptyBody}>
-                You don't have an upcoming task yet. Join a group and start helping each other.
+                You don't have an upcoming task yet. Join a Tribe and start helping each other.
               </Text>
               <AnimatedPressable
                 style={styles.browseGroupsButton}
                 onPress={() => navigation.navigate("Groups", { screen: "BrowseGroups" })}
               >
-                <Text style={styles.browseGroupsButtonText}>Browse groups</Text>
+                <Text style={styles.browseGroupsButtonText}>Browse Tribes</Text>
                 <Ionicons name="arrow-forward" size={15} color="#fff" />
               </AnimatedPressable>
             </View>
-            <View style={styles.nextTaskEmptyIllustration}>
-              <IllustrationCircle size={84} tint="rgba(255,255,255,0.6)">
-                <Ionicons name="people" size={38} color={colors.primary} />
-              </IllustrationCircle>
-              <View style={styles.nextTaskEmptyBadge}>
-                <Ionicons name="calendar" size={14} color="#fff" />
-              </View>
-            </View>
+            <IllustrationCard source={NEXT_TASK_EMPTY_IMAGE} width={120} aspectRatio={1273 / 966} rounded={radii.lg} />
           </View>
         </Reveal>
       )}

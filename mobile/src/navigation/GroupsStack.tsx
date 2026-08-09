@@ -37,9 +37,9 @@ export default function GroupsStack() {
       <Stack.Screen name="BrowseGroups" component={BrowseGroupsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="MyInvitations" component={MyInvitationsScreen} options={{ title: "My Invitations" }} />
       <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: "Group" }} />
+      <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: "Tribe" }} />
       <Stack.Screen name="Applications" component={ApplicationsScreen} options={{ title: "Applications" }} />
-      <Stack.Screen name="GroupChat" component={GroupChatScreen} options={{ title: "Group Chat" }} />
+      <Stack.Screen name="GroupChat" component={GroupChatScreen} options={{ title: "Tribe Chat" }} />
       <Stack.Screen name="TaskSchedule" component={TaskScheduleScreen} options={{ title: "Schedule" }} />
       <Stack.Screen name="CompleteTask" component={CompleteTaskScreen} options={{ title: "Complete Task" }} />
       <Stack.Screen name="RateHost" component={RateHostScreen} options={{ title: "Rate the Host" }} />
@@ -57,7 +57,7 @@ export default function GroupsStack() {
         name="GroupHistory"
         component={GroupHistoryScreen}
         options={({ navigation }) => ({
-          title: "Groups You've Been In",
+          title: "Tribes You've Been In",
           // Same fix as CompletedTasks in TasksStack: reached from Home's
           // stat tile, which can be this tab's first navigation this
           // session - the default back button can end up with no history

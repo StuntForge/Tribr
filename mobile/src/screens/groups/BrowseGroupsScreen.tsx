@@ -92,8 +92,8 @@ export default function BrowseGroupsScreen({ navigation }: any) {
           </AnimatedPressable>
           <TribrLogo />
         </View>
-        <Text style={styles.title}>Find a Group</Text>
-        <Text style={styles.subtitle}>Find local groups and start getting things done together.</Text>
+        <Text style={styles.title}>Find a Tribe</Text>
+        <Text style={styles.subtitle}>Find local Tribes and start getting things done together.</Text>
       </WaveHeader>
       <View style={styles.filters}>
         <View style={styles.filterBar}>
@@ -257,7 +257,7 @@ export default function BrowseGroupsScreen({ navigation }: any) {
           onRefresh={refetch}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No groups match your search</Text>
+              <Text style={styles.emptyTitle}>No Tribes match your search</Text>
               <Text style={styles.emptyBody}>Try widening your radius or clearing a filter.</Text>
             </View>
           }

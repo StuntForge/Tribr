@@ -124,7 +124,7 @@ export default function TaskScheduleScreen({ route }: any) {
   const confirmRevise = () => {
     Alert.alert(
       "Add more dates?",
-      "This is your one-time revision for this task - once you send it back to the group, you won't be able to add more dates again.",
+      "This is your one-time revision for this task - once you send it back to the Tribe, you won't be able to add more dates again.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Add dates", onPress: () => setRevising(true) },
@@ -142,13 +142,13 @@ export default function TaskScheduleScreen({ route }: any) {
         revising ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Add more dates</Text>
-            <Text style={styles.hint}>This is a one-time revision. Once sent, the group resubmits their availability.</Text>
+            <Text style={styles.hint}>This is a one-time revision. Once sent, the Tribe resubmits their availability.</Text>
             <OwnerCalendarPicker
               existingDates={schedule.proposal!.options.map((o) => toDateString(new Date(o.date)))}
               windowStart={schedule.windowStart}
               windowEnd={schedule.windowEnd}
               busy={reviseMutation.isPending}
-              submitLabel="Send revised dates to group"
+              submitLabel="Send revised dates to Tribe"
               onSubmit={(options) => reviseMutation.mutate(options)}
             />
             <TouchableOpacity style={styles.linkButton} onPress={() => setRevising(false)}>
@@ -167,7 +167,7 @@ export default function TaskScheduleScreen({ route }: any) {
               windowStart={schedule.windowStart}
               windowEnd={schedule.windowEnd}
               busy={proposeMutation.isPending}
-              submitLabel="Send to group"
+              submitLabel="Send to Tribe"
               onSubmit={(options) => proposeMutation.mutate(options)}
             />
           </View>
@@ -204,7 +204,7 @@ export default function TaskScheduleScreen({ route }: any) {
             if (unanswered.length > 0) {
               Alert.alert(
                 "Respond to every date",
-                "Let the group know your availability for each proposed date before submitting.",
+                "Let the Tribe know your availability for each proposed date before submitting.",
               );
               return;
             }

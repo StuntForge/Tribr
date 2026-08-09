@@ -221,7 +221,7 @@ export default function SearchMembersScreen({ route, navigation }: any) {
           onRefresh={refetch}
           ListEmptyComponent={
             <Text style={styles.emptyBody}>
-              No members found. Only members who've switched on "Looking for a new group" show up here.
+              No members found. Only members who've switched on "Looking for a new Tribe" show up here.
             </Text>
           }
           renderItem={({ item }) => <MemberCard member={item} onPress={() => goToProfile(item)} />}

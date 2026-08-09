@@ -78,11 +78,11 @@ export default function SubscriptionScreen() {
         <Text style={styles.tier}>{status.tier === "SUBSCRIBER" ? "Subscriber" : "Free plan"}</Text>
         {status.tier === "SUBSCRIBER" ? (
           <Text style={styles.body}>
-            Up to 20 tasks, 6 groups, and you can create groups.
+            Up to 20 tasks, 6 Tribes, and you can form Tribes.
             {status.currentPeriodEnd ? ` Renews ${new Date(status.currentPeriodEnd).toDateString()}.` : ""}
           </Text>
         ) : (
-          <Text style={styles.body}>1 task, 1 group. Subscribe for £4.99/month to unlock more.</Text>
+          <Text style={styles.body}>1 task, 1 Tribe. Subscribe for £4.99/month to unlock more.</Text>
         )}
       </View>
 

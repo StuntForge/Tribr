@@ -10,9 +10,9 @@ import { colors, radii, shadows, spacing, type } from "../../theme";
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Draft",
   AVAILABLE: "Available",
-  SUBMITTED: "Submitted to group",
+  SUBMITTED: "Submitted to Tribe",
   APPROVED: "Assigned",
-  ACTIVE: "Active in group",
+  ACTIVE: "Active in Tribe",
   COMPLETED: "Completed",
   ARCHIVED: "Completed",
   FORGONE: "Forgone this cycle",

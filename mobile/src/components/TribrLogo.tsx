@@ -11,7 +11,7 @@ export default function TribrLogo({ light = true }: { light?: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  mark: { width: 28, height: 28 },
-  word: { fontSize: 20, fontWeight: "800" },
+  row: { flexDirection: "row", alignItems: "center", gap: 10 },
+  mark: { width: 56, height: 56 },
+  word: { fontSize: 26, fontWeight: "800" },
 });

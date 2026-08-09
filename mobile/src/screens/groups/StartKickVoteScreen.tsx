@@ -30,7 +30,7 @@ export default function StartKickVoteScreen({ route, navigation }: any) {
     >
       <Text style={styles.title}>Start a vote to remove {targetName}</Text>
       <Text style={styles.hint}>
-        Everyone else currently in the group will need to agree before {targetName} is removed. If even one person
+        Everyone else currently in the Tribe will need to agree before {targetName} is removed. If even one person
         disagrees, the vote fails.
       </Text>
 
@@ -39,7 +39,7 @@ export default function StartKickVoteScreen({ route, navigation }: any) {
         style={[styles.input, styles.multiline]}
         value={reason}
         onChangeText={setReason}
-        placeholder="Give a brief, honest reason the rest of the group can see."
+        placeholder="Give a brief, honest reason the rest of the Tribe can see."
         multiline
         numberOfLines={4}
       />

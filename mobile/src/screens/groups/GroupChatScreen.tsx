@@ -78,7 +78,7 @@ export default function GroupChatScreen({ route }: any) {
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No messages yet. Say hello, or wait for the group leader to get things moving.</Text>
+            <Text style={styles.emptyText}>No messages yet. Say hello, or wait for the Tribe leader to get things moving.</Text>
           </View>
         }
         renderItem={({ item }) => <MessageBubble message={item} isMine={item.senderId === profile?.id} />}
@@ -91,8 +91,8 @@ export default function GroupChatScreen({ route }: any) {
           style={styles.input}
           value={text}
           onChangeText={setText}
-          placeholder="Message the group"
-          accessibilityLabel="Message the group"
+          placeholder="Message the Tribe"
+          accessibilityLabel="Message the Tribe"
         />
         <TouchableOpacity style={styles.sendButton} onPress={onSend} disabled={!text.trim()} accessibilityRole="button">
           <Text style={styles.sendButtonText}>Send</Text>

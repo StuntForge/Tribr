@@ -9,8 +9,12 @@ import WaveHeader from "../../components/WaveHeader";
 import TribrLogo from "../../components/TribrLogo";
 import AnimatedPressable from "../../components/AnimatedPressable";
 import EmptyState from "../../components/EmptyState";
+import IllustrationCard from "../../components/IllustrationCard";
 import { InfoCard, InfoCardRow } from "../../components/InfoCard";
 import { colors, radii, shadows, spacing } from "../../theme";
+
+const GROUPS_EMPTY_IMAGE = require("../../../assets/illustrations/processed/groups-empty-state.png");
+const BETTER_TOGETHER_IMAGE = require("../../../assets/illustrations/processed/home-page-better-together.png");
 
 const STATE_LABEL: Record<GroupState, string> = {
   RECRUITING: "Recruiting",
@@ -39,8 +43,8 @@ export default function GroupsHomeScreen({ navigation }: any) {
 
   const explainLimit = () =>
     Alert.alert(
-      "You're at your group limit",
-      `You're already in ${activeCount} of ${limit} group${limit === 1 ? "" : "s"} your plan allows. Leave or finish one before joining or creating another.`
+      "You're at your Tribe limit",
+      `You're already in ${activeCount} of ${limit} Tribe${limit === 1 ? "" : "s"} your plan allows. Leave or finish one before joining or creating another.`
     );
 
   return (
@@ -53,14 +57,14 @@ export default function GroupsHomeScreen({ navigation }: any) {
             {invitationCount > 0 && <View style={styles.bellBadge} />}
           </AnimatedPressable>
         </View>
-        <Text style={styles.title}>Groups</Text>
+        <Text style={styles.title}>Tribes</Text>
         <Text style={styles.subtitle}>Work together. Get things done.</Text>
       </WaveHeader>
 
       <View style={styles.menuRow}>
         <MenuButton
           icon="search"
-          label="Find a group"
+          label="Find a Tribe"
           disabled={atLimit}
           onPress={() => (atLimit ? explainLimit() : navigation.navigate("BrowseGroups"))}
         />
@@ -72,7 +76,7 @@ export default function GroupsHomeScreen({ navigation }: any) {
         />
         <MenuButton
           icon="add-circle"
-          label="Create a group"
+          label="Form a Tribe"
           disabled={atLimit}
           onPress={() =>
             atLimit
@@ -85,7 +89,7 @@ export default function GroupsHomeScreen({ navigation }: any) {
       </View>
       {atLimit && (
         <Text style={styles.limitNote}>
-          You're at your plan's group limit ({activeCount}/{limit}) - Find a group and Create a group are turned off until you leave or finish one.
+          You're at your plan's Tribe limit ({activeCount}/{limit}) - Find a Tribe and Form a Tribe are turned off until you leave or finish one.
         </Text>
       )}
 
@@ -102,12 +106,19 @@ export default function GroupsHomeScreen({ navigation }: any) {
             <EmptyState
               icon="people"
               badgeIcon="hand-left"
-              title="You're not in a group yet"
-              body={'Tap "Find a group" above to apply with one of your tasks, or create your own group if you\'re a Subscriber.'}
+              image={GROUPS_EMPTY_IMAGE}
+              imageAspectRatio={1514 / 967}
+              title="You're not in a Tribe yet"
+              body={'Tap "Find a Tribe" above to apply with one of your tasks, or form your own Tribe if you\'re a Subscriber.'}
             >
               <View style={styles.infoCardWrap}>
                 <InfoCard>
-                  <InfoCardRow icon="people" title="Better together" body="Join local people, help each other out and get more done." />
+                  <View style={styles.betterTogetherRow}>
+                    <View style={{ flex: 1 }}>
+                      <InfoCardRow icon="people" title="Better together" body="Join local people, help each other out and get more done." />
+                    </View>
+                    <IllustrationCard source={BETTER_TOGETHER_IMAGE} width={56} aspectRatio={1231 / 945} rounded={radii.md} />
+                  </View>
                 </InfoCard>
               </View>
             </EmptyState>
@@ -216,6 +227,7 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 100, flexGrow: 1 },
   infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
+  betterTogetherRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,

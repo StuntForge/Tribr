@@ -1,13 +1,16 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ImageSourcePropType, StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { Ionicons } from "@expo/vector-icons";
 import IllustrationCircle from "./illustrations/IllustrationCircle";
+import IllustrationCard from "./IllustrationCard";
 import { colors, radii, spacing, type } from "../theme";
 
 export default function EmptyState({
   icon,
   badgeIcon,
+  image,
+  imageAspectRatio,
   title,
   body,
   tint = colors.surfaceAlt,
@@ -15,6 +18,8 @@ export default function EmptyState({
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   badgeIcon?: keyof typeof Ionicons.glyphMap;
+  image?: ImageSourcePropType;
+  imageAspectRatio?: number;
   title: string;
   body: string;
   tint?: string;
@@ -27,13 +32,19 @@ export default function EmptyState({
         animate={{ opacity: 1, scale: 1, translateY: 0 }}
         transition={{ type: "timing", duration: 450 }}
       >
-        <IllustrationCircle size={132} tint={tint}>
-          <Ionicons name={icon} size={52} color={colors.primary} />
-        </IllustrationCircle>
-        {badgeIcon && (
-          <View style={styles.badge}>
-            <Ionicons name={badgeIcon} size={16} color="#fff" />
-          </View>
+        {image ? (
+          <IllustrationCard source={image} width={240} aspectRatio={imageAspectRatio ?? 1.3} />
+        ) : (
+          <>
+            <IllustrationCircle size={132} tint={tint}>
+              <Ionicons name={icon} size={52} color={colors.primary} />
+            </IllustrationCircle>
+            {badgeIcon && (
+              <View style={styles.badge}>
+                <Ionicons name={badgeIcon} size={16} color="#fff" />
+              </View>
+            )}
+          </>
         )}
       </MotiView>
       <Text style={styles.title}>{title}</Text>
