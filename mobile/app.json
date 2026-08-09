@@ -43,6 +43,12 @@
         "projectId": "370e8c99-2253-4f26-8b55-931dfea62094"
       }
     },
-    "owner": "tribr"
+    "owner": "tribr",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/370e8c99-2253-4f26-8b55-931dfea62094"
+    }
   }
 }
