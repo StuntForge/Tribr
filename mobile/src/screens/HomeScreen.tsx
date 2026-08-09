@@ -15,6 +15,7 @@ import Reveal from "../components/Reveal";
 import WaveHeader from "../components/WaveHeader";
 import TribrLogo from "../components/TribrLogo";
 import IconCircle from "../components/IconCircle";
+import IllustrationCircle from "../components/illustrations/IllustrationCircle";
 import { colors, radii, shadows, spacing, type } from "../theme";
 
 export default function HomeScreen({ navigation }: any) {
@@ -274,7 +275,7 @@ export default function HomeScreen({ navigation }: any) {
         <Reveal delay={nextDelay()}>
           <View style={styles.nextTaskEmptyCard}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionHeading}>Your next task</Text>
+              <Text style={styles.nextTaskEmptyTitle}>Your next task</Text>
               <Text style={styles.nextTaskEmptyBody}>
                 You don't have an upcoming task yet. Join a group and start helping each other.
               </Text>
@@ -287,7 +288,9 @@ export default function HomeScreen({ navigation }: any) {
               </AnimatedPressable>
             </View>
             <View style={styles.nextTaskEmptyIllustration}>
-              <Ionicons name="people" size={48} color={colors.primary} />
+              <IllustrationCircle size={84} tint="rgba(255,255,255,0.6)">
+                <Ionicons name="people" size={38} color={colors.primary} />
+              </IllustrationCircle>
               <View style={styles.nextTaskEmptyBadge}>
                 <Ionicons name="calendar" size={14} color="#fff" />
               </View>
@@ -487,6 +490,7 @@ const styles = StyleSheet.create({
   avatarStackItem: { borderWidth: 2, borderColor: colors.surface, borderRadius: 16 },
   nextTaskEmptyCard: {
     flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.surfaceAlt,
     borderRadius: radii.lg,
     padding: spacing.lg,
@@ -494,6 +498,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     gap: spacing.sm,
   },
+  nextTaskEmptyTitle: { ...type.h3, marginBottom: spacing.xs },
   nextTaskEmptyBody: { ...type.body, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.md },
   browseGroupsButton: {
     flexDirection: "row",
@@ -507,11 +512,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   browseGroupsButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  nextTaskEmptyIllustration: { width: 72, alignItems: "center", justifyContent: "center" },
+  nextTaskEmptyIllustration: { width: 84, height: 84, alignItems: "center", justifyContent: "center" },
   nextTaskEmptyBadge: {
     position: "absolute",
-    bottom: -2,
-    right: 4,
+    bottom: 2,
+    right: 2,
     width: 26,
     height: 26,
     borderRadius: 13,
