@@ -111,7 +111,9 @@ router.get("/groups/:id/tasks/:taskId/attendees", async (req, res) => {
     include: { user: true },
   });
 
-  res.json(responses.map((r) => ({ userId: r.userId, firstName: r.user.firstName })));
+  res.json(
+    responses.map((r) => ({ userId: r.userId, firstName: r.user.firstName, profilePhotoUrl: r.user.profilePhotoUrl }))
+  );
 });
 
 // 5.2/5.3/5.6 - the active task owner's scheduling workspace for their task.

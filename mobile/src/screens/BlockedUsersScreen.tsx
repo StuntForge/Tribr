@@ -1,12 +1,16 @@
 import React from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { BlockedUser, getBlockedUsers, unblockUser } from "../api/profile";
 import AnimatedPressable from "../components/AnimatedPressable";
 import Avatar from "../components/Avatar";
+import WaveHeader from "../components/WaveHeader";
+import EmptyState from "../components/EmptyState";
+import { InfoCard, InfoCardRow } from "../components/InfoCard";
 import { colors, radii, shadows, spacing } from "../theme";
 
-export default function BlockedUsersScreen() {
+export default function BlockedUsersScreen({ navigation }: any) {
   const queryClient = useQueryClient();
   const { data: blocked, isLoading } = useQuery({ queryKey: ["blocked-users"], queryFn: getBlockedUsers });
 
@@ -15,46 +19,97 @@ export default function BlockedUsersScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["blocked-users"] }),
   });
 
+  const Header = (
+    <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="shield" size={26} color="rgba(255,255,255,0.85)" /></View>}>
+      <View style={styles.topRow}>
+        <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </AnimatedPressable>
+      </View>
+      <Text style={styles.title}>Blocked Users</Text>
+      <Text style={styles.subtitle}>People you've blocked</Text>
+    </WaveHeader>
+  );
+
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
+      <View style={styles.container}>
+        {Header}
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
       </View>
     );
   }
 
   return (
-    <FlatList
-      style={styles.container}
-      contentContainerStyle={styles.listContent}
-      data={blocked}
-      keyExtractor={(b) => b.userId}
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No blocked users</Text>
-          <Text style={styles.emptyBody}>Members you block won't be able to invite, message or apply to your groups.</Text>
-        </View>
-      }
-      renderItem={({ item }: { item: BlockedUser }) => (
-        <View style={styles.card}>
-          <Avatar name={item.firstName} photoUrl={item.profilePhotoUrl} size={40} />
-          <Text style={styles.name}>{item.firstName ?? "Member"}</Text>
-          <AnimatedPressable style={styles.unblockButton} onPress={() => unblockMutation.mutate(item.userId)}>
-            <Text style={styles.unblockButtonText}>Unblock</Text>
-          </AnimatedPressable>
-        </View>
-      )}
-    />
+    <View style={styles.container}>
+      {Header}
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={blocked}
+        keyExtractor={(b) => b.userId}
+        ListEmptyComponent={
+          <EmptyState icon="shield" badgeIcon="ban" title="No blocked users" body="Members you block won't be able to invite you, message you or apply to your groups.">
+            <View style={styles.infoCardWrap}>
+              <InfoCard>
+                <InfoCardRow icon="person-remove" title="Why block someone?" body="Blocking helps keep your experience safe and comfortable." />
+                <InfoCardRow icon="lock-closed" title="You're in control" body="You can unblock someone at any time if you change your mind." divider />
+              </InfoCard>
+            </View>
+            <AnimatedPressable
+              style={styles.findButton}
+              onPress={() => navigation.navigate("Groups", { screen: "SearchMembers" })}
+            >
+              <Ionicons name="person-add" size={16} color="#fff" />
+              <Text style={styles.findButtonText}>Find members to invite</Text>
+            </AnimatedPressable>
+          </EmptyState>
+        }
+        renderItem={({ item }: { item: BlockedUser }) => (
+          <View style={styles.card}>
+            <Avatar name={item.firstName} photoUrl={item.profilePhotoUrl} size={40} />
+            <Text style={styles.name}>{item.firstName ?? "Member"}</Text>
+            <AnimatedPressable style={styles.unblockButton} onPress={() => unblockMutation.mutate(item.userId)}>
+              <Text style={styles.unblockButtonText}>Unblock</Text>
+            </AnimatedPressable>
+          </View>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
+  backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4 },
+  headerIllustration: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: 18,
+  },
   listContent: { padding: spacing.lg, flexGrow: 1 },
-  empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl },
-  emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm },
-  emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
+  infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
+  findButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    alignSelf: "stretch",
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  findButtonText: { color: "#fff", fontWeight: "700" },
   card: {
     flexDirection: "row",
     alignItems: "center",

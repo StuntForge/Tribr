@@ -2,10 +2,14 @@ import React, { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
+import { Ionicons } from "@expo/vector-icons";
 import { setDietary, updateMe } from "../api/profile";
 import { uploadPhoto } from "../api/uploads";
 import { useAuth } from "../context/AuthContext";
+import PostcodeInput from "../components/PostcodeInput";
+import WaveHeader from "../components/WaveHeader";
+import AnimatedPressable from "../components/AnimatedPressable";
+import FieldLabel from "../components/FieldLabel";
 import { colors, spacing } from "../theme";
 
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Pescatarian", "No Seafood", "Lactose Intolerant", "Kosher", "Halal", "Food Allergies"];
@@ -14,6 +18,7 @@ export default function EditProfileScreen({ navigation }: any) {
   const { profile, refreshProfile } = useAuth();
 
   const [firstName, setFirstName] = useState(profile?.firstName ?? "");
+  const [postcode, setPostcode] = useState("");
   const [locationLabel, setLocationLabel] = useState(profile?.locationLabel ?? "");
   const [locationLat, setLocationLat] = useState<number | undefined>(profile?.locationLat ?? undefined);
   const [locationLng, setLocationLng] = useState<number | undefined>(profile?.locationLng ?? undefined);
@@ -22,7 +27,6 @@ export default function EditProfileScreen({ navigation }: any) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(profile?.profilePhotoUrl ?? null);
   const [dietary, setDietaryState] = useState<string[]>(profile?.dietary ?? []);
   const [allergyDetail, setAllergyDetail] = useState(profile?.allergyDetail ?? "");
-  const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,37 +54,6 @@ export default function EditProfileScreen({ navigation }: any) {
       } catch (e: any) {
         setError(e.message ?? "Could not upload photo.");
       }
-    }
-  };
-
-  const useCurrentLocation = async () => {
-    setError(null);
-    setLocating(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setError("Location access is needed to find helpers near you.");
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({});
-      setLocationLat(position.coords.latitude);
-      setLocationLng(position.coords.longitude);
-      const places = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-      const place = places[0];
-      // city is missing on some Android devices/locations - fall back through
-      // progressively broader labels rather than jumping straight to just
-      // the region (which read as unhelpfully vague, e.g. plain "England").
-      if (place) {
-        const locality = place.city || place.subregion || place.district || place.name;
-        setLocationLabel([locality, place.region].filter(Boolean).join(", "));
-      }
-    } catch {
-      setError("Could not determine your location. You can type it manually instead.");
-    } finally {
-      setLocating(false);
     }
   };
 
@@ -116,41 +89,59 @@ export default function EditProfileScreen({ navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
-      <TouchableOpacity
-        style={styles.photoPicker}
-        onPress={pickPhoto}
-        accessibilityLabel="Change profile photo"
-        accessibilityRole="button"
-      >
-        {photoLocalUri || photoUrl ? (
-          <Image source={{ uri: photoLocalUri ?? photoUrl! }} style={styles.photo} />
-        ) : (
-          <Text style={styles.photoPickerText}>Add profile photo</Text>
-        )}
-      </TouchableOpacity>
+      <WaveHeader contentStyle={styles.headerContent}>
+        <View style={styles.topRow}>
+          <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </AnimatedPressable>
+          <Text style={styles.headerTitle}>Edit Profile</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.photoPicker}
+          onPress={pickPhoto}
+          accessibilityLabel="Change profile photo"
+          accessibilityRole="button"
+        >
+          {photoLocalUri || photoUrl ? (
+            <Image source={{ uri: photoLocalUri ?? photoUrl! }} style={styles.photo} />
+          ) : (
+            <Text style={styles.photoPickerText}>Add profile photo</Text>
+          )}
+          <View style={styles.cameraBadge}>
+            <Ionicons name="camera" size={14} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+      </WaveHeader>
 
-      <Text style={styles.label}>First name</Text>
+      <View style={styles.form}>
+      <FieldLabel icon="person" label="First name" />
       <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="Alex" accessibilityLabel="First name" />
 
-      <Text style={styles.label}>Age</Text>
+      <FieldLabel icon="calendar" label="Age" />
       <View style={styles.lockedField}>
         <Text style={styles.lockedFieldText}>{profile?.age}</Text>
       </View>
       <Text style={styles.hint}>Set when you created your account and can't be changed.</Text>
 
-      <Text style={styles.label}>Gender</Text>
+      <FieldLabel icon="male-female" label="Gender" />
       <View style={styles.lockedField}>
         <Text style={styles.lockedFieldText}>{profile?.gender}</Text>
       </View>
       <Text style={styles.hint}>Set when you created your account and can't be changed.</Text>
 
-      <Text style={styles.label}>Approximate location</Text>
-      <TextInput style={styles.input} value={locationLabel} onChangeText={setLocationLabel} placeholder="Bristol, UK" />
-      <TouchableOpacity onPress={useCurrentLocation} style={styles.linkButton}>
-        {locating ? <ActivityIndicator /> : <Text style={styles.linkButtonText}>Use my current location</Text>}
-      </TouchableOpacity>
+      <FieldLabel icon="location" label="Postcode" />
+      <Text style={styles.hint}>Currently set to {profile?.locationLabel || "not set"}. Your exact address is never shown.</Text>
+      <PostcodeInput
+        postcode={postcode}
+        onChangePostcode={setPostcode}
+        onResolved={(r) => {
+          setLocationLabel(r.label);
+          setLocationLat(r.lat);
+          setLocationLng(r.lng);
+        }}
+      />
 
-      <Text style={styles.label}>Biography</Text>
+      <FieldLabel icon="pencil" label="Biography" />
       <TextInput
         style={[styles.input, styles.multiline]}
         value={bio}
@@ -160,7 +151,7 @@ export default function EditProfileScreen({ navigation }: any) {
         numberOfLines={4}
       />
 
-      <Text style={styles.label}>Dietary requirements</Text>
+      <FieldLabel icon="nutrition" label="Dietary requirements" />
       <Text style={styles.hint}>Only visible to members of groups you belong to.</Text>
       <View style={styles.chipRow}>
         {DIETARY_OPTIONS.map((option) => (
@@ -178,7 +169,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
       {dietary.includes("Food Allergies") && (
         <>
-          <Text style={styles.label}>What are you allergic to?</Text>
+          <FieldLabel icon="alert-circle" label="What are you allergic to?" />
           <TextInput
             style={styles.input}
             value={allergyDetail}
@@ -201,31 +192,52 @@ export default function EditProfileScreen({ navigation }: any) {
         accessibilityRole="button"
         accessibilityState={{ disabled: !canSubmit || submitting }}
       >
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save changes</Text>}
+        {submitting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <View style={styles.buttonContent}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.buttonText}>Save changes</Text>
+          </View>
+        )}
       </TouchableOpacity>
+      </View>
     </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl },
+  content: { paddingBottom: spacing.xl },
+  form: { paddingHorizontal: spacing.lg },
+  headerContent: { alignItems: "center" },
+  topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "stretch", marginBottom: spacing.md },
+  backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  headerTitle: { color: "#fff", fontSize: 20, fontWeight: "800" },
   photoPicker: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: "rgba(255,255,255,0.15)",
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "center",
-    marginBottom: spacing.lg,
     overflow: "hidden",
   },
   photo: { width: "100%", height: "100%" },
-  photoPickerText: { color: colors.primary, fontSize: 12, textAlign: "center", paddingHorizontal: spacing.sm },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
+  photoPickerText: { color: "#fff", fontSize: 12, textAlign: "center", paddingHorizontal: spacing.sm },
+  cameraBadge: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
   hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.surface,
@@ -258,8 +270,6 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.text, fontSize: 13 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },
-  linkButton: { marginTop: spacing.sm, minHeight: 44, justifyContent: "center" },
-  linkButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   error: { color: colors.danger, marginTop: spacing.md },
   button: {
     backgroundColor: colors.primary,
@@ -270,6 +280,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     justifyContent: "center",
   },
+  buttonContent: { flexDirection: "row", alignItems: "center", gap: 8 },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });

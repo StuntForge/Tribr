@@ -14,6 +14,11 @@ import {
   markNotificationRead,
   NotificationItem,
 } from "../api/notifications";
+import WaveHeader from "../components/WaveHeader";
+import TribrLogo from "../components/TribrLogo";
+import SegmentedTabs from "../components/SegmentedTabs";
+import EmptyState from "../components/EmptyState";
+import { InfoCard, InfoCardRow } from "../components/InfoCard";
 import { colors, radii, shadows, spacing } from "../theme";
 
 type Tab = "updates" | "action";
@@ -108,9 +113,23 @@ export default function NotificationsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="notifications" size={28} color="rgba(255,255,255,0.85)" /></View>}>
+        <View style={styles.topRow}>
+          <TribrLogo />
+        </View>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={styles.subtitle}>Stay up to date with what matters in your groups.</Text>
+      </WaveHeader>
+
       <View style={styles.tabRow}>
-        <TabButton label="Updates" count={unreadCount} active={tab === "updates"} onPress={() => setTab("updates")} />
-        <TabButton label="Action Needed" count={actionCount} active={tab === "action"} onPress={() => setTab("action")} />
+        <SegmentedTabs
+          options={[
+            { value: "updates", label: `Updates${unreadCount > 0 ? ` (${unreadCount})` : ""}`, icon: "notifications" },
+            { value: "action", label: `Action Needed${actionCount > 0 ? ` (${actionCount})` : ""}`, icon: "flag" },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
       </View>
 
       {tab === "updates" ? (
@@ -136,9 +155,15 @@ export default function NotificationsScreen({ navigation }: any) {
             refreshing={isRefetching}
             onRefresh={refetch}
             ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptyBody}>Nothing here yet. You'll see invitations, approvals and reminders as they happen.</Text>
-              </View>
+              <EmptyState icon="notifications" badgeIcon="paper-plane" title="No new notifications" body="Nothing here yet. You'll see invitations, approvals and reminders as they happen.">
+                <View style={styles.infoCardWrap}>
+                  <InfoCard>
+                    <InfoCardRow icon="people" title="What you'll see here" body="Invitations - when someone invites you to join a group." />
+                    <InfoCardRow icon="checkmark-circle" body="Approvals - when your request to join is approved." divider />
+                    <InfoCardRow icon="calendar" body="Reminders - upcoming work dates and deadlines." divider />
+                  </InfoCard>
+                </View>
+              </EmptyState>
             }
             renderItem={({ item }) => (
               <NotificationRow item={item} onPress={() => onPressNotification(item)} onDismiss={() => dismissMutation.mutate(item.id)} />
@@ -153,25 +178,12 @@ export default function NotificationsScreen({ navigation }: any) {
           refreshing={actionItemsRefetching}
           onRefresh={refetchActionItems}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyBody}>Nothing needs your attention right now.</Text>
-            </View>
+            <EmptyState icon="flag" badgeIcon="checkmark" title="You're all caught up" body="Nothing needs your attention right now." />
           }
           renderItem={({ item }) => <ActionItemRow item={item} onPress={() => onPressActionItem(item)} />}
         />
       )}
     </View>
-  );
-}
-
-function TabButton({ label, count, active, onPress }: { label: string; count: number; active: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={[styles.tabButton, active && styles.tabButtonActive]} onPress={onPress}>
-      <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
-        {label}
-        {count > 0 ? ` (${count})` : ""}
-      </Text>
-    </TouchableOpacity>
   );
 }
 
@@ -216,22 +228,21 @@ function ActionItemRow({ item, onPress }: { item: ActionItem; onPress: () => voi
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  tabRow: { flexDirection: "row", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.sm },
-  tabButton: {
-    flex: 1,
+  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
+  headerTitle: { color: "#fff", fontSize: 26, fontWeight: "800" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 14, marginTop: 4, maxWidth: "75%" },
+  headerIllustration: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    justifyContent: "center",
+    margin: 18,
   },
-  tabButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabButtonText: { fontSize: 13, fontWeight: "700", color: colors.textMuted },
-  tabButtonTextActive: { color: "#fff" },
+  tabRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, flexGrow: 1 },
-  empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl },
-  emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
+  infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
   topActions: { flexDirection: "row", justifyContent: "center" },
   markAllButton: { padding: spacing.md, alignItems: "center" },
   markAllText: { color: colors.primary, fontWeight: "600", fontSize: 13 },

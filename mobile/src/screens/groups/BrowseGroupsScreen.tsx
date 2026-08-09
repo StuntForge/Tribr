@@ -9,6 +9,9 @@ import AnimatedPressable from "../../components/AnimatedPressable";
 import LocationMap from "../../components/LocationMap";
 import ProBadge from "../../components/ProBadge";
 import SortSelect from "../../components/SortSelect";
+import WaveHeader from "../../components/WaveHeader";
+import TribrLogo from "../../components/TribrLogo";
+import SegmentedTabs from "../../components/SegmentedTabs";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 type SortKey = "distance" | "members";
@@ -51,6 +54,7 @@ export default function BrowseGroupsScreen({ navigation }: any) {
   const [view, setView] = useState<"list" | "map">("list");
   const [expandedFilter, setExpandedFilter] = useState<FilterKey | null>(null);
   const [sort, setSort] = useState<SortKey>("distance");
+  const [stripCollapsed, setStripCollapsed] = useState(false);
 
   const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories, enabled: isSubscriber });
   const sizeOption = SIZE_OPTIONS[sizeIndex];
@@ -81,6 +85,16 @@ export default function BrowseGroupsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <WaveHeader style={styles.header}>
+        <View style={styles.topRow}>
+          <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </AnimatedPressable>
+          <TribrLogo />
+        </View>
+        <Text style={styles.title}>Find a Group</Text>
+        <Text style={styles.subtitle}>Find local groups and start getting things done together.</Text>
+      </WaveHeader>
       <View style={styles.filters}>
         <View style={styles.filterBar}>
           <FilterPill label="Radius" value={radiusLabel} active={expandedFilter === "radius"} onPress={() => toggleFilter("radius")} />
@@ -162,45 +176,78 @@ export default function BrowseGroupsScreen({ navigation }: any) {
           </View>
         )}
 
-        <View style={styles.viewToggle}>
-          <AnimatedPressable
-            style={[styles.viewToggleButton, view === "list" && styles.viewToggleButtonActive]}
-            onPress={() => setView("list")}
-          >
-            <Ionicons name="list" size={16} color={view === "list" ? "#fff" : colors.text} />
-            <Text style={[styles.viewToggleText, view === "list" && styles.viewToggleTextActive]}>List</Text>
-          </AnimatedPressable>
-          <AnimatedPressable
-            style={[styles.viewToggleButton, view === "map" && styles.viewToggleButtonActive]}
-            onPress={() => setView("map")}
-          >
-            <Ionicons name="map" size={16} color={view === "map" ? "#fff" : colors.text} />
-            <Text style={[styles.viewToggleText, view === "map" && styles.viewToggleTextActive]}>Map</Text>
-          </AnimatedPressable>
-        </View>
+        <SegmentedTabs
+          options={[
+            { value: "list", label: "List", icon: "list" },
+            { value: "map", label: "Map", icon: "map" },
+          ]}
+          value={view}
+          onChange={setView}
+        />
       </View>
 
       {isLoading ? (
         <ActivityIndicator style={{ marginTop: spacing.lg }} color={colors.primary} />
       ) : view === "map" ? (
-        <LocationMap
-          markers={(groups ?? [])
-            .filter((g) => g.locationLat != null && g.locationLng != null)
-            .map((g) => ({
-              id: g.id,
-              lat: g.locationLat!,
-              lng: g.locationLng!,
-              label: g.leaderName ?? "Unknown",
-              title: g.name,
-              snippet: `${g.memberCount}/${g.sizeMax} members${g.approxDistanceMiles != null ? ` · ${g.approxDistanceMiles} mi` : ""}`,
-            }))}
-          center={
-            profile?.locationLat != null && profile?.locationLng != null
-              ? { lat: profile.locationLat, lng: profile.locationLng }
-              : { lat: 53.1699, lng: -0.1699 }
-          }
-          onSelectMarker={(groupId) => navigation.navigate("GroupDetail", { groupId })}
-        />
+        <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }}>
+            <LocationMap
+              markers={(groups ?? [])
+                .filter((g) => g.locationLat != null && g.locationLng != null)
+                .map((g) => ({
+                  id: g.id,
+                  lat: g.locationLat!,
+                  lng: g.locationLng!,
+                  label: g.leaderName ?? "Unknown",
+                  title: g.name,
+                  snippet: `${g.memberCount}/${g.sizeMax} members${g.approxDistanceMiles != null ? ` · ${g.approxDistanceMiles} mi` : ""}`,
+                }))}
+              center={
+                profile?.locationLat != null && profile?.locationLng != null
+                  ? { lat: profile.locationLat, lng: profile.locationLng }
+                  : { lat: 53.1699, lng: -0.1699 }
+              }
+              onSelectMarker={(groupId) => navigation.navigate("GroupDetail", { groupId })}
+            />
+          </View>
+          {(sortedGroups?.length ?? 0) > 0 && (
+            <View style={styles.stripWrap}>
+              <AnimatedPressable style={styles.stripHandle} onPress={() => setStripCollapsed((v) => !v)}>
+                <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+              </AnimatedPressable>
+              {!stripCollapsed && (
+                <FlatList
+                  data={sortedGroups}
+                  keyExtractor={(g) => g.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.stripContent}
+                  renderItem={({ item }) => (
+                    <AnimatedPressable style={styles.stripCard} onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}>
+                      <View style={styles.stripCardIcon}>
+                        <Ionicons name={iconForCategory(item.categories[0] ?? null)} size={20} color="#fff" />
+                        <View style={[styles.stripCardBadge, !item.eligibleToApply && styles.stripCardBadgeMuted]}>
+                          <Text style={styles.stripCardBadgeText}>
+                            {item.memberCount}/{item.sizeMax}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.stripCardTitle} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <View style={styles.stripCardMetaRow}>
+                        <Ionicons name="location" size={11} color={colors.textMuted} />
+                        <Text style={styles.stripCardMeta}>
+                          {item.approxDistanceMiles != null ? `${item.approxDistanceMiles} miles away` : "Distance unknown"}
+                        </Text>
+                      </View>
+                    </AnimatedPressable>
+                  )}
+                />
+              )}
+            </View>
+          )}
+        </View>
       ) : (
         <FlatList
           data={sortedGroups}
@@ -296,6 +343,11 @@ function FilterChip({ label, selected, onPress }: { label: string; selected: boo
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  header: { marginBottom: 0 },
+  topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  title: { color: "#fff", fontSize: 22, fontWeight: "800" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4 },
   filters: { padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
   filterBar: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   filterPill: {
@@ -325,26 +377,47 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.text, fontSize: 12 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },
-  viewToggle: {
-    flexDirection: "row",
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.pill,
-    padding: 3,
-    marginTop: spacing.xs,
+  listContent: { padding: spacing.lg, paddingTop: spacing.sm, flexGrow: 1 },
+  stripWrap: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    ...shadows.raised,
   },
-  viewToggleButton: {
-    flex: 1,
-    flexDirection: "row",
+  stripHandle: { alignItems: "center", paddingVertical: 6 },
+  stripContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
+  stripCard: {
+    width: 140,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    ...shadows.card,
+  },
+  stripCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
+    marginBottom: spacing.xs,
   },
-  viewToggleButtonActive: { backgroundColor: colors.primary },
-  viewToggleText: { fontSize: 13, fontWeight: "600", color: colors.text },
-  viewToggleTextActive: { color: "#fff" },
-  listContent: { padding: spacing.lg, paddingTop: spacing.sm, flexGrow: 1 },
+  stripCardBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  stripCardBadgeMuted: { backgroundColor: colors.accent },
+  stripCardBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
+  stripCardTitle: { fontSize: 13, fontWeight: "700", color: colors.text },
+  stripCardMetaRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
+  stripCardMeta: { fontSize: 11, color: colors.textMuted },
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },

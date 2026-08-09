@@ -5,6 +5,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { getMyGroups, getMyInvitations, GroupState } from "../../api/groups";
 import { useAuth } from "../../context/AuthContext";
 import { useUnreadMessages } from "../../hooks/useUnreadMessages";
+import WaveHeader from "../../components/WaveHeader";
+import TribrLogo from "../../components/TribrLogo";
+import AnimatedPressable from "../../components/AnimatedPressable";
+import EmptyState from "../../components/EmptyState";
+import { InfoCard, InfoCardRow } from "../../components/InfoCard";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 const STATE_LABEL: Record<GroupState, string> = {
@@ -40,6 +45,18 @@ export default function GroupsHomeScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <WaveHeader>
+        <View style={styles.topRow}>
+          <TribrLogo />
+          <AnimatedPressable style={styles.bellButton} onPress={() => navigation.navigate("MyInvitations")}>
+            <Ionicons name="notifications-outline" size={22} color="#fff" />
+            {invitationCount > 0 && <View style={styles.bellBadge} />}
+          </AnimatedPressable>
+        </View>
+        <Text style={styles.title}>Groups</Text>
+        <Text style={styles.subtitle}>Work together. Get things done.</Text>
+      </WaveHeader>
+
       <View style={styles.menuRow}>
         <MenuButton
           icon="search"
@@ -82,13 +99,18 @@ export default function GroupsHomeScreen({ navigation }: any) {
           refreshing={isRefetching}
           onRefresh={refetch}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>You're not in a group yet</Text>
-              <Text style={styles.emptyBody}>
-                Tap "Find a group" above to apply with one of your tasks, or create your own group if you're a
-                Subscriber.
-              </Text>
-            </View>
+            <EmptyState
+              icon="people"
+              badgeIcon="hand-left"
+              title="You're not in a group yet"
+              body={'Tap "Find a group" above to apply with one of your tasks, or create your own group if you\'re a Subscriber.'}
+            >
+              <View style={styles.infoCardWrap}>
+                <InfoCard>
+                  <InfoCardRow icon="people" title="Better together" body="Join local people, help each other out and get more done." />
+                </InfoCard>
+              </View>
+            </EmptyState>
           }
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.card} onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}>
@@ -128,7 +150,7 @@ function MenuButton({
   badge?: number;
 }) {
   return (
-    <TouchableOpacity style={[styles.menuButton, disabled && styles.menuButtonDisabled]} onPress={onPress}>
+    <AnimatedPressable style={[styles.menuButton, disabled && styles.menuButtonDisabled]} onPress={onPress}>
       <View>
         <Ionicons name={icon} size={22} color={disabled ? colors.textMuted : "#fff"} />
         {badge != null && (
@@ -138,12 +160,27 @@ function MenuButton({
         )}
       </View>
       <Text style={[styles.menuButtonText, disabled && styles.menuButtonTextDisabled]}>{label}</Text>
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  bellButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  bellBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  title: { color: "#fff", fontSize: 26, fontWeight: "800" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 14, marginTop: 4 },
   menuRow: { flexDirection: "row", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.sm },
   menuButton: {
     flex: 1,
@@ -178,9 +215,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 100, flexGrow: 1 },
-  empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
-  emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
-  emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
+  infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,

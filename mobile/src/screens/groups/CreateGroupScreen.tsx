@@ -6,6 +6,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createGroup } from "../../api/groups";
 import { getJobCategories, getMyTasks } from "../../api/tasks";
 import TaskSelectRow from "../../components/TaskSelectRow";
+import WaveHeader from "../../components/WaveHeader";
+import TribrLogo from "../../components/TribrLogo";
+import AnimatedPressable from "../../components/AnimatedPressable";
+import FieldLabel from "../../components/FieldLabel";
 import { colors, radii, spacing } from "../../theme";
 
 const SIZE_PRESETS: { label: string; min: number; max: number }[] = [
@@ -51,19 +55,35 @@ export default function CreateGroupScreen({ route, navigation }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
+  const Header = (
+    <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="people" size={30} color="rgba(255,255,255,0.85)" /></View>}>
+      <View style={styles.topRow}>
+        <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </AnimatedPressable>
+        <TribrLogo />
+      </View>
+      <Text style={styles.title}>Create Group</Text>
+      <Text style={styles.subtitle}>Set up your group and invite others to get things done together.</Text>
+    </WaveHeader>
+  );
+
   if (blocked) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.blockedTitle}>Subscribers only</Text>
-        <Text style={styles.blockedBody}>
-          Creating a group is a Subscriber feature. Free members can still browse and apply to groups.
-        </Text>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => navigation.navigate("Profile", { screen: "Subscription" })}
-        >
-          <Text style={styles.primaryButtonText}>View subscription options</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        {Header}
+        <View style={styles.center}>
+          <Text style={styles.blockedTitle}>Subscribers only</Text>
+          <Text style={styles.blockedBody}>
+            Creating a group is a Subscriber feature. Free members can still browse and apply to groups.
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => navigation.navigate("Profile", { screen: "Subscription" })}
+          >
+            <Text style={styles.primaryButtonText}>View subscription options</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -99,96 +119,99 @@ export default function CreateGroupScreen({ route, navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
-      <Text style={styles.label}>Group name</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Bristol Garden Crew" />
+      {Header}
+      <View style={styles.form}>
+        <FieldLabel icon="people" label="Group name" />
+        <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Bristol Garden Crew" />
 
-      <Text style={styles.label}>Description</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        value={description}
-        onChangeText={setDescription}
-        placeholder="What kind of projects is this group for?"
-        multiline
-      />
+        <FieldLabel icon="reader" label="Description" />
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={description}
+          onChangeText={setDescription}
+          placeholder="What kind of projects is this group for?"
+          multiline
+        />
 
-      <Text style={styles.label}>Allowed categories</Text>
-      <Text style={styles.hint}>Members can only join (or be invited) with a task in one of these categories.</Text>
-      <View style={styles.chipRow}>
-        {categories?.map((c) => (
-          <TouchableOpacity
-            key={c.id}
-            style={[styles.chip, categoryIds.includes(c.id) && styles.chipSelected]}
-            onPress={() => toggleCategory(c.id)}
-          >
-            <Text style={[styles.chipText, categoryIds.includes(c.id) && styles.chipTextSelected]}>{c.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Group size</Text>
-      <View style={styles.chipRow}>
-        {SIZE_PRESETS.map((preset) => (
-          <TouchableOpacity
-            key={preset.label}
-            style={[styles.chip, sizePreset.label === preset.label && styles.chipSelected]}
-            onPress={() => setSizePreset(preset)}
-          >
-            <Text style={[styles.chipText, sizePreset.label === preset.label && styles.chipTextSelected]}>
-              {preset.label} members
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={styles.switchRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Verified members only</Text>
-          <Text style={styles.hint}>Only members who've completed at least one cycle before can apply.</Text>
-        </View>
-        <Switch value={verifiedOnly} onValueChange={setVerifiedOnly} trackColor={{ true: colors.primary }} />
-      </View>
-
-      <Text style={styles.label}>Minimum rating to apply</Text>
-      <View style={styles.chipRow}>
-        {RATING_OPTIONS.map((r) => (
-          <TouchableOpacity
-            key={r ?? "any"}
-            style={[styles.chip, minRating === r && styles.chipSelected]}
-            onPress={() => setMinRating(r)}
-          >
-            <Text style={[styles.chipText, minRating === r && styles.chipTextSelected]}>{r == null ? "Any" : `${r.toFixed(1)}★`}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Preferred age range</Text>
-      <Text style={styles.hint}>Only people within this range will see or be able to join this group.</Text>
-      <View style={styles.ageRow}>
-        <AgeSelect label="Min age" value={ageMin} onChange={setAgeMin} />
-        <Text style={styles.ageSeparator}>–</Text>
-        <AgeSelect label="Max age" value={ageMax} onChange={setAgeMax} />
-      </View>
-
-      <Text style={styles.label}>Your task for this group</Text>
-      {categoryIds.length === 0 ? (
-        <Text style={styles.hint}>Choose at least one allowed category first.</Text>
-      ) : availableTasks.length === 0 ? (
-        <Text style={styles.hint}>
-          You don't have an available task in an allowed category. Add one from your Task Library first.
-        </Text>
-      ) : (
-        <View>
-          {availableTasks.map((t) => (
-            <TaskSelectRow key={t.id} task={t} selected={taskId === t.id} onSelect={() => setTaskId(t.id)} navigation={navigation} />
+        <FieldLabel icon="pricetag" label="Allowed categories" />
+        <Text style={styles.hint}>Members can only join (or be invited) with a task in one of these categories.</Text>
+        <View style={styles.chipRow}>
+          {categories?.map((c) => (
+            <TouchableOpacity
+              key={c.id}
+              style={[styles.chip, categoryIds.includes(c.id) && styles.chipSelected]}
+              onPress={() => toggleCategory(c.id)}
+            >
+              <Text style={[styles.chipText, categoryIds.includes(c.id) && styles.chipTextSelected]}>{c.name}</Text>
+            </TouchableOpacity>
           ))}
         </View>
-      )}
 
-      {error && <Text style={styles.error}>{error}</Text>}
+        <FieldLabel icon="people-circle" label="Group size" />
+        <View style={styles.chipRow}>
+          {SIZE_PRESETS.map((preset) => (
+            <TouchableOpacity
+              key={preset.label}
+              style={[styles.chip, sizePreset.label === preset.label && styles.chipSelected]}
+              onPress={() => setSizePreset(preset)}
+            >
+              <Text style={[styles.chipText, sizePreset.label === preset.label && styles.chipTextSelected]}>
+                {preset.label} members
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      <TouchableOpacity style={styles.primaryButton} onPress={onSubmit} disabled={mutation.isPending}>
-        {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create group</Text>}
-      </TouchableOpacity>
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1 }}>
+            <FieldLabel icon="shield-checkmark" label="Verified members only" />
+            <Text style={styles.hint}>Only members who've completed at least one cycle before can apply.</Text>
+          </View>
+          <Switch value={verifiedOnly} onValueChange={setVerifiedOnly} trackColor={{ true: colors.primary }} />
+        </View>
+
+        <FieldLabel icon="star" label="Minimum rating to apply" />
+        <View style={styles.chipRow}>
+          {RATING_OPTIONS.map((r) => (
+            <TouchableOpacity
+              key={r ?? "any"}
+              style={[styles.chip, minRating === r && styles.chipSelected]}
+              onPress={() => setMinRating(r)}
+            >
+              <Text style={[styles.chipText, minRating === r && styles.chipTextSelected]}>{r == null ? "Any" : `${r.toFixed(1)}★`}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <FieldLabel icon="person" label="Preferred age range" />
+        <Text style={styles.hint}>Only people within this range will see or be able to join this group.</Text>
+        <View style={styles.ageRow}>
+          <AgeSelect label="Min age" value={ageMin} onChange={setAgeMin} />
+          <Text style={styles.ageSeparator}>–</Text>
+          <AgeSelect label="Max age" value={ageMax} onChange={setAgeMax} />
+        </View>
+
+        <FieldLabel icon="clipboard" label="Your task for this group" />
+        {categoryIds.length === 0 ? (
+          <Text style={styles.hint}>Choose at least one allowed category first.</Text>
+        ) : availableTasks.length === 0 ? (
+          <Text style={styles.hint}>
+            You don't have an available task in an allowed category. Add one from your Task Library first.
+          </Text>
+        ) : (
+          <View>
+            {availableTasks.map((t) => (
+              <TaskSelectRow key={t.id} task={t} selected={taskId === t.id} onSelect={() => setTaskId(t.id)} navigation={navigation} />
+            ))}
+          </View>
+        )}
+
+        {error && <Text style={styles.error}>{error}</Text>}
+
+        <TouchableOpacity style={styles.primaryButton} onPress={onSubmit} disabled={mutation.isPending}>
+          {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create group</Text>}
+        </TouchableOpacity>
+      </View>
     </KeyboardAwareScrollView>
   );
 }
@@ -232,11 +255,24 @@ function AgeSelect({ label, value, onChange }: { label: string; value: number | 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, lineHeight: 18, maxWidth: "80%" },
+  headerIllustration: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: 18,
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, padding: spacing.xl },
   blockedTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
   blockedBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
+  content: { paddingBottom: spacing.xl },
+  form: { paddingHorizontal: spacing.lg },
   hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.surface,
@@ -259,7 +295,7 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.text, fontSize: 13 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },
-  switchRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, gap: spacing.sm },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   ageRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   ageSeparator: { color: colors.textMuted },
   ageSelectButton: {

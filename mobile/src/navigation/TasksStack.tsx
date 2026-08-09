@@ -16,8 +16,8 @@ export default function TasksStack() {
         headerTitleStyle: { fontWeight: "700" },
       }}
     >
-      <Stack.Screen name="TaskLibrary" component={TaskLibraryScreen} options={{ title: "My Tasks" }} />
-      <Stack.Screen name="CreateEditTask" component={CreateEditTaskScreen} options={{ title: "Task" }} />
+      <Stack.Screen name="TaskLibrary" component={TaskLibraryScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="CreateEditTask" component={CreateEditTaskScreen} options={{ headerShown: false }} />
       <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ title: "Task" }} />
     </Stack.Navigator>
   );

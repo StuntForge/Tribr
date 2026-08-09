@@ -6,6 +6,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { deleteTask, getMyTasks, Task, TaskStatus } from "../../api/tasks";
 import { useAuth } from "../../context/AuthContext";
+import WaveHeader from "../../components/WaveHeader";
+import TribrLogo from "../../components/TribrLogo";
+import AnimatedPressable from "../../components/AnimatedPressable";
+import SegmentedTabs from "../../components/SegmentedTabs";
+import EmptyState from "../../components/EmptyState";
+import { InfoCard, InfoCardRow } from "../../components/InfoCard";
 import { colors, radii, spacing } from "../../theme";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -88,8 +94,11 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
   if (mode === "completed") {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Completed Tasks</Text>
+        <View style={styles.simpleHeader}>
+          <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </AnimatedPressable>
+          <Text style={styles.simpleHeaderTitle}>Completed Tasks</Text>
         </View>
         <FlatList
           data={completedTasks}
@@ -112,17 +121,34 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Tasks</Text>
-        <Text style={styles.headerSubtitle}>
-          {countedActiveTasks.length} of {limit} active task{limit === 1 ? "" : "s"} used
-          {profile?.subscriptionTier !== "SUBSCRIBER" ? " (Free plan)" : ""}
-        </Text>
-      </View>
+      <WaveHeader>
+        <View style={styles.topRow}>
+          <TribrLogo />
+          <AnimatedPressable style={[styles.addButton, atLimit && styles.addButtonDisabled]} onPress={onAddTask} disabled={atLimit}>
+            <View style={[styles.addButtonIcon, atLimit && styles.addButtonIconDisabled]}>
+              <Ionicons name="add" size={18} color="#fff" />
+            </View>
+            <Text style={styles.addButtonText}>{atLimit ? "Limit reached" : "Add a task"}</Text>
+          </AnimatedPressable>
+        </View>
+        <Text style={styles.title}>My Tasks</Text>
+        <View style={styles.subtitleRow}>
+          <Text style={styles.subtitle}>
+            {countedActiveTasks.length} of {limit} active task{limit === 1 ? "" : "s"} used
+          </Text>
+          <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.75)" />
+        </View>
+      </WaveHeader>
 
       <View style={styles.tabRow}>
-        <TabButton label="Active Tasks" count={activeTasks.length} active={tab === "active"} onPress={() => setTab("active")} />
-        <TabButton label="Archived Tasks" count={archivedTasks.length} active={tab === "archived"} onPress={() => setTab("archived")} />
+        <SegmentedTabs
+          options={[
+            { value: "active", label: `Active Tasks (${activeTasks.length})`, icon: "clipboard" },
+            { value: "archived", label: `Archived Tasks (${archivedTasks.length})`, icon: "archive" },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
       </View>
 
       {tab === "active" ? (
@@ -133,13 +159,18 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
           refreshing={isRefetching}
           onRefresh={refetch}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>You haven't added a task yet</Text>
-              <Text style={styles.emptyBody}>
-                Add a DIY, gardening or decorating project you'd like help with. This is the task you'll offer in
-                exchange for helping other members with theirs.
-              </Text>
-            </View>
+            <EmptyState
+              icon="clipboard"
+              badgeIcon="leaf"
+              title="You haven't added a task yet"
+              body="Add a DIY, gardening or decorating project you'd like help with. This is the task you'll offer in exchange for helping other members with theirs."
+            >
+              <View style={styles.infoCardWrap}>
+                <InfoCard>
+                  <InfoCardRow icon="people" title="Tip: Add a great task" body="The more detail you add, the easier it is to find the right people to help (and for others to help you)." />
+                </InfoCard>
+              </View>
+            </EmptyState>
           }
           renderItem={({ item }) => (
             <TaskCard task={item} onPress={() => navigation.navigate("CreateEditTask", { taskId: item.id })} />
@@ -169,28 +200,7 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
           )}
         />
       )}
-
-      {tab === "active" && (
-        <TouchableOpacity
-          style={[styles.addButton, atLimit && styles.addButtonDisabled]}
-          onPress={onAddTask}
-          accessibilityRole="button"
-          accessibilityLabel="Add a task"
-        >
-          <Text style={styles.addButtonText}>{atLimit ? "Task limit reached" : "+ Add a task"}</Text>
-        </TouchableOpacity>
-      )}
     </View>
-  );
-}
-
-function TabButton({ label, count, active, onPress }: { label: string; count: number; active: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={[styles.tabButton, active && styles.tabButtonActive]} onPress={onPress}>
-      <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
-        {label} ({count})
-      </Text>
-    </TouchableOpacity>
   );
 }
 
@@ -238,25 +248,29 @@ function ArchivedTaskRow({ task, onPress, onDelete }: { task: Task; onPress: () 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  header: { padding: spacing.lg, paddingBottom: spacing.sm },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: colors.text },
-  headerSubtitle: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs },
-  tabRow: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  tabButton: {
-    flex: 1,
+  simpleHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.sm },
+  backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  simpleHeaderTitle: { fontSize: 20, fontWeight: "700", color: colors.text },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  addButton: { flexDirection: "row", alignItems: "center", gap: 8 },
+  addButtonDisabled: { opacity: 0.6 },
+  addButtonIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.accent,
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    justifyContent: "center",
   },
-  tabButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabButtonText: { fontSize: 13, fontWeight: "700", color: colors.textMuted },
-  tabButtonTextActive: { color: "#fff" },
+  addButtonIconDisabled: { backgroundColor: "rgba(255,255,255,0.3)" },
+  addButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  title: { color: "#fff", fontSize: 26, fontWeight: "800" },
+  subtitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13 },
+  tabRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 100, flexGrow: 1 },
+  infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
-  emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
   card: {
     backgroundColor: colors.surface,
@@ -281,16 +295,4 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   deleteActionText: { color: "#fff", fontSize: 11, fontWeight: "700" },
-  addButton: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    padding: spacing.md,
-    alignItems: "center",
-  },
-  addButtonDisabled: { backgroundColor: colors.border },
-  addButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });

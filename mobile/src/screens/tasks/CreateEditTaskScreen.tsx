@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   activateTask,
@@ -26,6 +25,12 @@ import {
   updateTask,
 } from "../../api/tasks";
 import { uploadPhoto } from "../../api/uploads";
+import PostcodeInput from "../../components/PostcodeInput";
+import WaveHeader from "../../components/WaveHeader";
+import AnimatedPressable from "../../components/AnimatedPressable";
+import FieldLabel from "../../components/FieldLabel";
+import StepperInput from "../../components/StepperInput";
+import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing } from "../../theme";
 
 export default function CreateEditTaskScreen({ route, navigation }: any) {
@@ -42,15 +47,15 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  const [hours, setHours] = useState("");
+  const [hours, setHours] = useState(6);
   const [locationType, setLocationType] = useState<"HOME" | "CHOOSE">("HOME");
+  const [postcode, setPostcode] = useState("");
   const [locationLabel, setLocationLabel] = useState("");
   const [locationLat, setLocationLat] = useState<number | undefined>(undefined);
   const [locationLng, setLocationLng] = useState<number | undefined>(undefined);
   const [exactAddress, setExactAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // Photos picked before a brand-new task exists yet - uploaded to storage
   // immediately (so they can be previewed) but only linked to the task once
@@ -63,7 +68,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       setName(existingTask.name);
       setCategoryId(existingTask.category.id);
       setDescription(existingTask.description);
-      setHours(String(existingTask.estimatedManHours));
+      setHours(existingTask.estimatedManHours);
       setLocationType(existingTask.locationType);
       setLocationLabel(existingTask.locationType === "CHOOSE" ? existingTask.locationLabel ?? "" : "");
       setLocationLat(existingTask.locationLat ?? undefined);
@@ -129,30 +134,6 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
-  const useCurrentLocation = async () => {
-    setLocating(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setError("Location access is needed to set a task location.");
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({});
-      setLocationLat(position.coords.latitude);
-      setLocationLng(position.coords.longitude);
-      const places = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-      const place = places[0];
-      if (place) setLocationLabel([place.city, place.region].filter(Boolean).join(", "));
-    } catch {
-      setError("Could not determine your location. Type it manually instead.");
-    } finally {
-      setLocating(false);
-    }
-  };
-
   const MAX_PHOTOS = 4;
   const photoCount = taskId ? existingTask?.photos.length ?? 0 : pendingPhotos.length;
 
@@ -185,11 +166,9 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   };
 
   const buildInput = () => {
-    const hoursNum = Number(hours);
     if (!name.trim()) return setError("Give the task a name."), null;
     if (!categoryId) return setError("Choose a job category."), null;
     if (!description.trim()) return setError("Add a short description."), null;
-    if (!Number.isFinite(hoursNum) || hoursNum <= 0) return setError("Enter estimated man hours."), null;
     if (locationType === "CHOOSE" && !locationLabel.trim()) return setError("Enter a location."), null;
 
     setError(null);
@@ -197,7 +176,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       name: name.trim(),
       categoryId,
       description: description.trim(),
-      estimatedManHours: hoursNum,
+      estimatedManHours: hours,
       location:
         locationType === "HOME"
           ? ({ type: "HOME" } as const)
@@ -280,6 +259,17 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
+      <WaveHeader illustration={<View style={styles.headerIllustration}><Ionicons name="construct" size={30} color="rgba(255,255,255,0.85)" /></View>}>
+        <View style={styles.topRow}>
+          <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </AnimatedPressable>
+        </View>
+        <Text style={styles.headerTitle}>{taskId ? "Edit Task" : "Add a Task"}</Text>
+        <Text style={styles.headerSubtitle}>Create a task you need help with and offer it in exchange.</Text>
+      </WaveHeader>
+
+      <View style={styles.form}>
       {isArchived && (
         <View style={styles.archivedBanner}>
           <Text style={styles.archivedBannerText}>
@@ -289,10 +279,10 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       )}
 
       <View pointerEvents={isArchived ? "none" : "auto"} style={isArchived && styles.readOnlyForm}>
-      <Text style={styles.label}>Task name</Text>
+      <FieldLabel icon="pencil" label="Task name" required />
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Repaint the fence" />
 
-      <Text style={styles.label}>Job category</Text>
+      <FieldLabel icon="grid" label="Job category" required />
       <View style={styles.chipRow}>
         {categories?.map((c) => (
           <TouchableOpacity
@@ -305,7 +295,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
         ))}
       </View>
 
-      <Text style={styles.label}>Description</Text>
+      <FieldLabel icon="list" label="Description" required />
       <TextInput
         style={[styles.input, styles.multiline]}
         value={description}
@@ -315,14 +305,18 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
         numberOfLines={4}
       />
 
-      <Text style={styles.label}>Estimated man hours</Text>
-      <Text style={styles.hint}>
-        One man hour = one person working for one hour. E.g. a fence that takes 2 people 3 hours each is 6 man
-        hours.
-      </Text>
-      <TextInput style={styles.input} value={hours} onChangeText={setHours} placeholder="6" keyboardType="numeric" />
+      <View style={styles.hoursRow}>
+        <View style={{ flex: 1 }}>
+          <FieldLabel icon="time" label="Estimated man hours" required />
+          <Text style={styles.hint}>
+            One man hour = one person working for one hour. E.g. a fence that takes 2 people 3 hours each is 6 man
+            hours.
+          </Text>
+        </View>
+        <StepperInput value={hours} onChange={setHours} min={1} unit="man hours" />
+      </View>
 
-      <Text style={styles.label}>Location</Text>
+      <FieldLabel icon="location" label="Location" required />
       <View style={styles.chipRow}>
         <TouchableOpacity
           style={[styles.chip, locationType === "HOME" && styles.chipSelected]}
@@ -339,16 +333,17 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       </View>
       {locationType === "CHOOSE" && (
         <>
-          <TextInput
-            style={styles.input}
-            value={locationLabel}
-            onChangeText={setLocationLabel}
-            placeholder="Bristol, UK"
+          <FieldLabel icon="navigate" label="Postcode" />
+          <PostcodeInput
+            postcode={postcode}
+            onChangePostcode={setPostcode}
+            onResolved={(r) => {
+              setLocationLabel(r.label);
+              setLocationLat(r.lat);
+              setLocationLng(r.lng);
+            }}
           />
-          <TouchableOpacity onPress={useCurrentLocation} style={styles.linkButton}>
-            {locating ? <ActivityIndicator /> : <Text style={styles.linkButtonText}>Use my current location</Text>}
-          </TouchableOpacity>
-          <Text style={styles.label}>Exact address (optional, private)</Text>
+          <FieldLabel icon="home" label="Exact address (optional, private)" />
           <TextInput
             style={styles.input}
             value={exactAddress}
@@ -359,7 +354,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       )}
       <Text style={styles.hint}>Your exact address is only shared with the group once a work date is confirmed.</Text>
 
-      <Text style={styles.label}>Notes (optional)</Text>
+      <FieldLabel icon="clipboard" label="Notes (optional)" />
       <TextInput
         style={[styles.input, styles.multiline]}
         value={notes}
@@ -368,7 +363,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
         multiline
       />
 
-      <Text style={styles.label}>Photos ({photoCount}/{MAX_PHOTOS})</Text>
+      <FieldLabel icon="camera" label={`Photos (${photoCount}/${MAX_PHOTOS})`} />
       <Text style={styles.hint}>Long-press a photo to remove it.</Text>
       <View style={styles.photoRow}>
         {taskId
@@ -423,6 +418,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
           <Text style={styles.deleteButtonText}>Delete task</Text>
         </TouchableOpacity>
       )}
+      </View>
     </KeyboardAwareScrollView>
   );
 }
@@ -430,8 +426,22 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
+  content: { paddingBottom: spacing.xl },
+  form: { paddingHorizontal: spacing.lg },
+  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
+  backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  headerTitle: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  headerSubtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, maxWidth: "75%", lineHeight: 18 },
+  headerIllustration: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: 18,
+  },
+  hoursRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.md },
   hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.surface,

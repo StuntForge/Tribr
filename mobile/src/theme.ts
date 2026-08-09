@@ -5,13 +5,13 @@
 export const colors = {
   background: "#FAF6EF", // warm cream, not stark white/gray
   surface: "#FFFFFF",
-  surfaceAlt: "#F3EEE3", // subtle section tint (e.g. active/selected rows)
+  surfaceAlt: "#E9EEE7", // subtle sage section tint (info cards, active/selected rows)
 
-  primary: "#3D6B52", // grounded forest green — growth, community, DIY/garden
-  primaryDark: "#284A38",
-  primaryLight: "#E6EFE8", // selected chips, subtle highlights
+  primary: "#1B3A2C", // deep pine green — headers, tab bar, primary buttons
+  primaryDark: "#0F241C",
+  primaryLight: "#E1E9E3", // selected chips, subtle highlights
 
-  accent: "#C1694F", // warm terracotta — secondary emphasis, variety
+  accent: "#D97B4F", // terracotta — active tab highlight, links, CTA accents
   accentLight: "#F5E2DA",
 
   text: "#2B2420", // warm near-black, not clinical pure black

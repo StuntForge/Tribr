@@ -33,10 +33,10 @@ export default function GroupsStack() {
         headerTitleStyle: { fontWeight: "700" },
       }}
     >
-      <Stack.Screen name="GroupsHome" component={GroupsHomeScreen} options={{ title: "Groups" }} />
-      <Stack.Screen name="BrowseGroups" component={BrowseGroupsScreen} options={{ title: "Find a Group" }} />
+      <Stack.Screen name="GroupsHome" component={GroupsHomeScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="BrowseGroups" component={BrowseGroupsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="MyInvitations" component={MyInvitationsScreen} options={{ title: "My Invitations" }} />
-      <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ title: "Create Group" }} />
+      <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ headerShown: false }} />
       <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: "Group" }} />
       <Stack.Screen name="Applications" component={ApplicationsScreen} options={{ title: "Applications" }} />
       <Stack.Screen name="GroupChat" component={GroupChatScreen} options={{ title: "Group Chat" }} />

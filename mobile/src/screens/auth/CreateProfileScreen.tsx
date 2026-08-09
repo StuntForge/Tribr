@@ -10,10 +10,11 @@ import {
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
 import { updateMe } from "../../api/profile";
 import { uploadPhoto } from "../../api/uploads";
 import { useAuth } from "../../context/AuthContext";
+import AgeSelect from "../../components/AgeSelect";
+import PostcodeInput from "../../components/PostcodeInput";
 import { colors, spacing } from "../../theme";
 
 const GENDER_OPTIONS = ["Female", "Male", "Non-binary", "Other", "Prefer not to say"];
@@ -22,15 +23,15 @@ export default function CreateProfileScreen() {
   const { refreshProfile } = useAuth();
 
   const [firstName, setFirstName] = useState("");
-  const [age, setAge] = useState("");
+  const [age, setAge] = useState<number | null>(null);
   const [gender, setGender] = useState<string | null>(null);
+  const [postcode, setPostcode] = useState("");
   const [locationLabel, setLocationLabel] = useState("");
   const [locationLat, setLocationLat] = useState<number | undefined>(undefined);
   const [locationLng, setLocationLng] = useState<number | undefined>(undefined);
   const [bio, setBio] = useState("");
   const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -57,37 +58,9 @@ export default function CreateProfileScreen() {
     }
   };
 
-  const useCurrentLocation = async () => {
-    setError(null);
-    setLocating(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setError("Location access is needed to find helpers near you.");
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({});
-      setLocationLat(position.coords.latitude);
-      setLocationLng(position.coords.longitude);
-      const places = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-      const place = places[0];
-      if (place) {
-        const locality = place.city || place.subregion || place.district || place.name;
-        setLocationLabel([locality, place.region].filter(Boolean).join(", "));
-      }
-    } catch {
-      setError("Could not determine your location. You can type it manually instead.");
-    } finally {
-      setLocating(false);
-    }
-  };
-
   const canSubmit =
     firstName.trim().length > 0 &&
-    age.trim().length > 0 &&
+    age != null &&
     gender &&
     locationLabel.trim().length > 0 &&
     bio.trim().length > 0 &&
@@ -95,16 +68,15 @@ export default function CreateProfileScreen() {
 
   const onSubmit = async () => {
     setError(null);
-    const ageNum = Number(age);
-    if (!Number.isFinite(ageNum) || ageNum < 16 || ageNum > 120) {
-      setError("Enter a valid age.");
+    if (age == null) {
+      setError("Choose your age.");
       return;
     }
     setSubmitting(true);
     try {
       await updateMe({
         firstName: firstName.trim(),
-        age: ageNum,
+        age,
         gender: gender!,
         locationLabel: locationLabel.trim(),
         locationLat,
@@ -146,7 +118,7 @@ export default function CreateProfileScreen() {
 
       <Text style={styles.label}>Age</Text>
       <Text style={styles.hint}>Must be accurate - this can't be changed once your account is created.</Text>
-      <TextInput style={styles.input} value={age} onChangeText={setAge} placeholder="35" keyboardType="number-pad" />
+      <AgeSelect value={age} onChange={setAge} />
 
       <Text style={styles.label}>Gender</Text>
       <Text style={styles.hint}>This can't be changed once your account is created.</Text>
@@ -162,20 +134,17 @@ export default function CreateProfileScreen() {
         ))}
       </View>
 
-      <Text style={styles.label}>Approximate location</Text>
-      <TextInput
-        style={styles.input}
-        value={locationLabel}
-        onChangeText={setLocationLabel}
-        placeholder="Bristol, UK"
+      <Text style={styles.label}>Postcode</Text>
+      <Text style={styles.hint}>Used to find groups and helpers near you. Your exact address is never shown.</Text>
+      <PostcodeInput
+        postcode={postcode}
+        onChangePostcode={setPostcode}
+        onResolved={(r) => {
+          setLocationLabel(r.label);
+          setLocationLat(r.lat);
+          setLocationLng(r.lng);
+        }}
       />
-      <TouchableOpacity onPress={useCurrentLocation} style={styles.linkButton}>
-        {locating ? (
-          <ActivityIndicator />
-        ) : (
-          <Text style={styles.linkButtonText}>Use my current location</Text>
-        )}
-      </TouchableOpacity>
 
       <Text style={styles.label}>Biography</Text>
       <TextInput

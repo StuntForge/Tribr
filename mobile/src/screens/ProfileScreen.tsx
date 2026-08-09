@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Circle } from "react-native-svg";
 import { useAuth } from "../context/AuthContext";
 import AnimatedPressable from "../components/AnimatedPressable";
 import Avatar from "../components/Avatar";
 import ProBadge from "../components/ProBadge";
 import Reveal from "../components/Reveal";
+import WaveHeader from "../components/WaveHeader";
+import IconCircle from "../components/IconCircle";
 import { colors, radii, shadows, spacing, type } from "../theme";
 
 export default function ProfileScreen({ navigation }: any) {
@@ -26,14 +27,15 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 140" pointerEvents="none">
-          <Circle cx="20" cy="10" r="60" fill={colors.primaryDark} opacity={0.3} />
-          <Circle cx="290" cy="120" r="70" fill={colors.accent} opacity={0.22} />
-        </Svg>
-        <View style={styles.avatarRing}>
-          <Avatar name={profile.firstName} photoUrl={profile.profilePhotoUrl} size={92} />
-        </View>
+      <WaveHeader contentStyle={styles.headerContent}>
+        <AnimatedPressable style={styles.avatarWrap} onPress={() => navigation.navigate("EditProfile")}>
+          <View style={styles.avatarRing}>
+            <Avatar name={profile.firstName} photoUrl={profile.profilePhotoUrl} size={92} />
+          </View>
+          <View style={styles.cameraBadge}>
+            <Ionicons name="camera" size={14} color={colors.primary} />
+          </View>
+        </AnimatedPressable>
         <Text style={styles.name}>{profile.firstName}</Text>
         <Text style={styles.meta}>
           {profile.age} · {profile.gender} · {profile.locationLabel}
@@ -45,46 +47,46 @@ export default function ProfileScreen({ navigation }: any) {
           </Text>
           <Text style={styles.ratingSub}>· {profile.completedCycles} cycles completed</Text>
         </View>
-      </View>
+      </WaveHeader>
 
       <Reveal delay={nextDelay()}>
-        <Section title="Subscription" icon="star">
-          <View style={styles.subscriptionRow}>
-            {profile.subscriptionTier === "SUBSCRIBER" ? (
-              <ProBadge />
-            ) : (
-              <View style={styles.subscriptionBadge}>
-                <Ionicons name="leaf" size={20} color={colors.primary} />
+        <View style={styles.subscriptionCard}>
+          <View style={styles.subscriptionHeaderRow}>
+            <IconCircle icon="star" size={40} bg={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <View style={styles.subscriptionTitleRow}>
+                <Text style={styles.sectionTitle}>Subscription</Text>
+                {profile.subscriptionTier === "SUBSCRIBER" && <ProBadge />}
               </View>
-            )}
-            <Text style={styles.hint}>
-              {profile.subscriptionTier === "SUBSCRIBER"
-                ? "You're a Subscriber - up to 20 tasks, 6 groups, and you can create groups."
-                : "You're on the Free plan - 1 task, 1 group, and you can't create groups."}
-            </Text>
+              <Text style={styles.hint}>
+                {profile.subscriptionTier === "SUBSCRIBER"
+                  ? "You're a Subscriber - up to 20 tasks, 6 groups, and you can create groups."
+                  : "You're on the Free plan - 1 task, 1 group, and you can't create groups."}
+              </Text>
+            </View>
           </View>
           <AnimatedPressable style={styles.primaryOutlineButton} onPress={() => navigation.navigate("Subscription")}>
-            <Ionicons name="card" size={16} color={colors.primary} />
+            <Ionicons name="ribbon" size={16} color={colors.primary} />
             <Text style={styles.primaryOutlineButtonText}>Manage subscription</Text>
           </AnimatedPressable>
-        </Section>
+        </View>
       </Reveal>
 
       <Reveal delay={nextDelay()}>
         <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("Favourites")}>
-          <Ionicons name="heart-outline" size={18} color={colors.text} />
+          <IconCircle icon="heart" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
           <Text style={styles.settingsRowText}>Favourites</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </AnimatedPressable>
 
         <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("BlockedUsers")}>
-          <Ionicons name="ban-outline" size={18} color={colors.text} />
+          <IconCircle icon="ban" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
           <Text style={styles.settingsRowText}>Blocked users</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </AnimatedPressable>
 
         <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("AccountSettings")}>
-          <Ionicons name="settings-outline" size={18} color={colors.text} />
+          <IconCircle icon="settings" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
           <Text style={styles.settingsRowText}>Account settings</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </AnimatedPressable>
@@ -98,69 +100,50 @@ export default function ProfileScreen({ navigation }: any) {
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon: keyof typeof Ionicons.glyphMap; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionTitleRow}>
-        <View style={styles.sectionIcon}>
-          <Ionicons name={icon} size={14} color={colors.primary} />
-        </View>
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },
-  header: {
-    alignItems: "center",
-    backgroundColor: colors.primary,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    borderBottomLeftRadius: radii.lg,
-    borderBottomRightRadius: radii.lg,
-    overflow: "hidden",
-    ...shadows.raised,
-  },
+  headerContent: { alignItems: "center" },
+  avatarWrap: { marginBottom: spacing.sm },
   avatarRing: {
     width: 100,
     height: 100,
     borderRadius: 50,
     padding: 4,
     backgroundColor: "rgba(255,255,255,0.9)",
-    marginBottom: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
+  },
+  cameraBadge: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   name: { fontSize: 22, fontWeight: "700", color: "#fff" },
   meta: { fontSize: 13, color: "rgba(255,255,255,0.8)", marginTop: spacing.xs },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.sm },
   ratingText: { fontSize: 14, fontWeight: "700", color: "#fff" },
   ratingSub: { fontSize: 12, color: "rgba(255,255,255,0.75)" },
-  section: {
+  subscriptionCard: {
     marginBottom: spacing.md,
     marginHorizontal: spacing.lg,
-    backgroundColor: colors.surface,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: radii.lg,
     padding: spacing.md,
-    ...shadows.card,
   },
-  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
-  sectionIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    backgroundColor: colors.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  subscriptionHeaderRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
+  subscriptionTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: 2 },
   sectionTitle: { ...type.h3 },
-  hint: { ...type.caption, marginBottom: spacing.sm, flex: 1 },
+  hint: { ...type.caption, lineHeight: 17 },
   primaryOutlineButton: {
     flexDirection: "row",
     gap: spacing.xs,
@@ -170,17 +153,9 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.surface,
   },
   primaryOutlineButtonText: { color: colors.primary, fontWeight: "700" },
-  subscriptionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
-  subscriptionBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   settingsRow: {
     backgroundColor: colors.surface,
     borderRadius: radii.md,

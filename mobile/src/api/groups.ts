@@ -240,6 +240,7 @@ export function forgoTask(groupId: string, taskId: string) {
 export interface Attendee {
   userId: string;
   firstName: string | null;
+  profilePhotoUrl: string | null;
 }
 
 export function getAttendees(groupId: string, taskId: string) {

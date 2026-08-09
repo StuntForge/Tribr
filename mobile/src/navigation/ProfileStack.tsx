@@ -19,12 +19,12 @@ export default function ProfileStack() {
         headerTitleStyle: { fontWeight: "700" },
       }}
     >
-      <Stack.Screen name="ProfileHome" component={ProfileScreen} options={{ title: "Settings" }} />
+      <Stack.Screen name="ProfileHome" component={ProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{ title: "Subscription" }} />
       <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} options={{ title: "Account Settings" }} />
-      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: "Edit Profile" }} />
-      <Stack.Screen name="Favourites" component={FavouritesScreen} options={{ title: "Favourites" }} />
-      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ title: "Blocked Users" }} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Favourites" component={FavouritesScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

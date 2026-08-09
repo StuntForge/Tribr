@@ -14,7 +14,7 @@ export default function NotificationsStack() {
         headerTitleStyle: { fontWeight: "700" },
       }}
     >
-      <Stack.Screen name="NotificationsHome" component={NotificationsScreen} options={{ title: "Notifications" }} />
+      <Stack.Screen name="NotificationsHome" component={NotificationsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

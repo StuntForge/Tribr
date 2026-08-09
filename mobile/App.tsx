@@ -15,7 +15,7 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <RootNavigator />
-            <StatusBar style="auto" />
+            <StatusBar style="light" />
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
