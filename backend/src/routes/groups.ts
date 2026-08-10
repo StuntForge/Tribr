@@ -125,7 +125,11 @@ export async function forfeitExpiredActiveTask(groupId: string) {
       where: { id: newOrder[0] },
       data: { status: "ACTIVE", activatedAt: new Date() },
     });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+      groupId,
+      taskId: nextTask.id,
+      taskName: nextTask.name,
+    });
   } else {
     await prisma.group.update({ where: { id: groupId }, data: { state: "COMPLETED" } });
     await prisma.groupCycle.update({ where: { id: cycle.id }, data: { completedAt: new Date() } });
@@ -871,13 +875,15 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
         excludeUserId: application.applicantId,
       });
     }
-    await notifyUser(application.applicantId, "APPLICATION_APPROVED", "Application approved", `You're in ${group.name}!`);
+    await notifyUser(application.applicantId, "APPLICATION_APPROVED", "Application approved", `You're in ${group.name}!`, { groupId: group.id });
   } else if (decision === "REJECT") {
     await prisma.$transaction([
       releaseTaskTx(application.taskId),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "REJECTED", rejectionReason: reason } }),
     ]);
-    await notifyUser(application.applicantId, "APPLICATION_REJECTED", "Application declined", `Your application to ${group.name} was declined: ${reason}`);
+    await notifyUser(application.applicantId, "APPLICATION_REJECTED", "Application declined", `Your application to ${group.name} was declined: ${reason}`, {
+      groupId: group.id,
+    });
   } else if (decision === "REQUEST_TASK") {
     await prisma.$transaction([
       releaseTaskTx(application.taskId),
@@ -887,7 +893,8 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
       application.applicantId,
       "APPLICATION_TASK_REQUESTED",
       "Choose a different task",
-      `The leader of ${group.name} asked you to submit a different task: ${reason}`
+      `The leader of ${group.name} asked you to submit a different task: ${reason}`,
+      { groupId: group.id }
     );
   } else if (decision === "SUGGEST_TASK") {
     if (!suggestedTaskId) return res.status(400).json({ error: "Choose which of the applicant's tasks to suggest." });
@@ -902,7 +909,8 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
       application.applicantId,
       "APPLICATION_TASK_SUGGESTED",
       "Task suggested",
-      `The leader of ${group.name} suggested a different one of your tasks. Open the application to respond.`
+      `The leader of ${group.name} suggested a different one of your tasks. Open the application to respond.`,
+      { groupId: group.id }
     );
   }
 
@@ -1297,7 +1305,11 @@ async function releaseKickedMember(groupId: string, targetUserId: string) {
         where: { id: newOrder[0] },
         data: { status: "ACTIVE", activatedAt: new Date() },
       });
-      await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+      await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+        groupId,
+        taskId: nextTask.id,
+        taskName: nextTask.name,
+      });
     }
   }
 }
@@ -1492,7 +1504,11 @@ router.post("/groups/:id/start-work", async (req, res) => {
   const firstTask = cycleTasks.find((t) => t.id === order[0])!;
   await postSystemMessage(group.id, "Start Work - the cycle has begun!");
   await notifyGroupMembers(group.id, "START_WORK", "Work has started", `${group.name} has started this cycle.`);
-  await notifyUser(firstTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in ${group.name}. Schedule a work date within 2 weeks.`);
+  await notifyUser(firstTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in ${group.name}. Schedule a work date within 2 weeks.`, {
+    groupId: group.id,
+    taskId: firstTask.id,
+    taskName: firstTask.name,
+  });
 
   res.json(await serializeGroupDetail(group.id, req.userId!));
 });
@@ -1526,7 +1542,11 @@ router.post("/groups/:id/tasks/:taskId/defer", async (req, res) => {
 
   const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: second } });
   await postSystemMessage(req.params.id, `${task.name} was deferred. It's now ${nextTask.name}'s turn.`);
-  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+    groupId: req.params.id,
+    taskId: nextTask.id,
+    taskName: nextTask.name,
+  });
 
   res.json(await serializeGroupDetail(req.params.id, req.userId!));
 });
@@ -1551,7 +1571,11 @@ router.post("/groups/:id/tasks/:taskId/forgo", async (req, res) => {
   if (wasActive && newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
     await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE", activatedAt: new Date() } });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+      groupId: req.params.id,
+      taskId: nextTask.id,
+      taskName: nextTask.name,
+    });
   }
   await saveOrder(ctx.cycle.id, newOrder);
 
@@ -1644,7 +1668,11 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   if (newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
     await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE", activatedAt: new Date() } });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.");
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+      groupId: req.params.id,
+      taskId: nextTask.id,
+      taskName: nextTask.name,
+    });
   }
   await saveOrder(ctx.cycle.id, newOrder);
 
@@ -1716,7 +1744,7 @@ async function handleCycleComplete(groupId: string) {
   // 6.7 - ratings collected during this cycle become part of public reputation now.
   if (cycle) await revealCycleRatings(cycle.id);
   await postSystemMessage(groupId, "Every task in this cycle is complete!");
-  await notifyUser(group.leaderId, "CYCLE_COMPLETE", "Cycle complete", "Choose whether to start a new cycle or end the group.");
+  await notifyUser(group.leaderId, "CYCLE_COMPLETE", "Cycle complete", "Choose whether to start a new cycle or end the group.", { groupId: group.id });
 }
 
 const completeCycleSchema = z.object({ action: z.enum(["DISBAND", "START_NEW_CYCLE"]) });

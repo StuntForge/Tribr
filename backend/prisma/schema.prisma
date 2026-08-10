@@ -37,6 +37,13 @@ model User {
   status            String    @default("ACTIVE") // ACTIVE | SUSPENDED | BANNED | PENDING_DELETION
   lookingForGroup   Boolean   @default(true)
 
+  // Push notifications (8.x) - timezone is the IANA name (e.g.
+  // "Europe/London") captured from the device, used to fire the daily
+  // digest at midday in the user's own local time.
+  expoPushToken     String?
+  timezone          String?
+  lastDigestSentAt  DateTime?
+
   // hidden reputation seed so new accounts aren't volatile (2.10, 6.11)
   workerSeedApplied Boolean   @default(true)
   hostSeedApplied   Boolean   @default(true)

@@ -5,6 +5,7 @@ import { prisma } from "../db";
 import { requireAdminAuth, logAdminAction } from "../middleware/adminAuth";
 import { signAdminToken } from "../services/adminJwt";
 import { runFullSpectrumSeed, deleteDemoData } from "../services/demoData";
+import { sendPushToUsers } from "../services/push";
 
 const router = Router();
 
@@ -264,6 +265,12 @@ router.post("/broadcast", async (req, res) => {
       payload: JSON.stringify({ title: parsed.data.title, body: parsed.data.body }),
     })),
   });
+  await sendPushToUsers(
+    users.map((u) => u.id),
+    parsed.data.title,
+    parsed.data.body,
+    { type: "ANNOUNCEMENT" }
+  );
 
   await logAdminAction(req.adminId!, "BROADCAST_SENT", "User", undefined, `"${parsed.data.title}" to ${users.length} users`);
   res.json({ ok: true, recipientCount: users.length });

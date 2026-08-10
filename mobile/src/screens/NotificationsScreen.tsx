@@ -20,6 +20,7 @@ import SegmentedTabs from "../components/SegmentedTabs";
 import EmptyState from "../components/EmptyState";
 import IllustrationCard from "../components/IllustrationCard";
 import { InfoCard, InfoCardRow } from "../components/InfoCard";
+import { resolveNotificationRoute } from "../utils/notificationNav";
 import { colors, radii, shadows, spacing } from "../theme";
 
 const HEADER_IMAGE = require("../../assets/illustrations/processed/notifications-header.png");
@@ -27,9 +28,11 @@ const EMPTY_IMAGE = require("../../assets/illustrations/processed/notifications-
 
 type Tab = "updates" | "action";
 
-export default function NotificationsScreen({ navigation }: any) {
+export default function NotificationsScreen({ navigation, route }: any) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>("updates");
+  // Tapping a "daily digest" push lands here with initialTab set so it opens
+  // straight on Action Needed instead of the default Updates tab.
+  const [tab, setTab] = useState<Tab>(route?.params?.initialTab === "action" ? "action" : "updates");
 
   const { data: notifications, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["notifications"],
@@ -81,30 +84,18 @@ export default function NotificationsScreen({ navigation }: any) {
 
   const onPressNotification = (item: NotificationItem) => {
     if (!item.read) readMutation.mutate(item.id);
-    if (item.type === "GROUP_INVITATION") {
-      navigation.navigate("Groups", { screen: "MyInvitations" });
-    } else if (item.type === "KICK_VOTE_OUTCOME" && item.voteId) {
-      navigation.navigate("Groups", { screen: "KickVote", params: { voteId: item.voteId } });
-    } else if (item.groupId) {
-      navigation.navigate("Groups", { screen: "GroupDetail", params: { groupId: item.groupId } });
-    }
+    const target = resolveNotificationRoute(item.type, { groupId: item.groupId, taskId: item.taskId, voteId: item.voteId });
+    if (target) navigation.navigate(target.tab, target.screen ? { screen: target.screen, params: target.params } : undefined);
   };
 
   const onPressActionItem = (item: ActionItem) => {
-    if (["PROPOSE_DATES", "PICK_DATE", "SUBMIT_AVAILABILITY"].includes(item.type) && item.groupId && item.taskId) {
-      navigation.navigate("Groups", {
-        screen: "TaskSchedule",
-        params: { groupId: item.groupId, taskId: item.taskId, taskName: item.taskName ?? "" },
-      });
-    } else if (item.type === "REVIEW_APPLICATIONS" && item.groupId) {
-      navigation.navigate("Groups", { screen: "Applications", params: { groupId: item.groupId } });
-    } else if (item.type === "KICK_VOTE" && item.voteId) {
-      navigation.navigate("Groups", { screen: "KickVote", params: { voteId: item.voteId } });
-    } else if (item.type === "RATE_HOST" && item.groupId && item.taskId) {
-      navigation.navigate("Groups", { screen: "RateHost", params: { groupId: item.groupId, taskId: item.taskId } });
-    } else if (item.groupId) {
-      navigation.navigate("Groups", { screen: "GroupDetail", params: { groupId: item.groupId } });
-    }
+    const target = resolveNotificationRoute(item.type, {
+      groupId: item.groupId,
+      taskId: item.taskId,
+      taskName: item.taskName,
+      voteId: item.voteId,
+    });
+    if (target) navigation.navigate(target.tab, target.screen ? { screen: target.screen, params: target.params } : undefined);
   };
 
   if (isLoading || actionItemsLoading) {

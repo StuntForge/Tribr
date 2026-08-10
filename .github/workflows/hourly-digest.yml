@@ -1,0 +1,23 @@
+name: Hourly digest tick
+
+# Render's free tier has no persistent background worker, so the "send a
+# push at midday in each user's own timezone" digest can't run as an
+# in-process cron - instead this fires the backend's digest-tick endpoint
+# once an hour, and that endpoint itself figures out which users are
+# currently at their local midday (see backend/src/routes/internal.ts).
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger digest-tick
+        run: |
+          curl -sf -X POST "${BACKEND_URL}/api/internal/digest-tick" \
+            -H "x-digest-secret: ${DIGEST_SECRET}"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          DIGEST_SECRET: ${{ secrets.DIGEST_SECRET }}

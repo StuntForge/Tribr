@@ -51,3 +51,7 @@ export interface ActionItem {
 export function getActionItems() {
   return apiFetch<ActionItem[]>("/api/notifications/me/action-items");
 }
+
+export function registerPushToken(token: string, timezone: string) {
+  return apiFetch<{ ok: true }>("/api/notifications/me/push-token", { method: "POST", body: { token, timezone } });
+}

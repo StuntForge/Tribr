@@ -255,6 +255,7 @@ router.post("/groups/:id/tasks/:taskId/availability-proposals", async (req, res)
   await postSystemMessage(req.params.id, `${task.name}: new work dates proposed. Let the group know your availability.`);
   await notifyGroupMembers(req.params.id, "DATES_PROPOSED", "New dates proposed", `New possible work dates for ${task.name}.`, {
     excludeUserId: req.userId,
+    extra: { taskId: task.id, taskName: task.name },
   });
 
   res.status(201).json({ id: proposal.id, options: proposal.options });
@@ -316,6 +317,7 @@ router.post("/groups/:id/tasks/:taskId/availability-revise", async (req, res) =>
   await postSystemMessage(req.params.id, `${task.name}: the owner added more date options. Please resubmit your availability.`);
   await notifyGroupMembers(req.params.id, "DATES_REVISED", "Dates updated", `${task.name}: more date options were added. Resubmit your availability.`, {
     excludeUserId: req.userId,
+    extra: { taskId: task.id, taskName: task.name },
   });
 
   res.json({ ok: true });

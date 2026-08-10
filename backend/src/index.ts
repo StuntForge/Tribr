@@ -15,6 +15,7 @@ import searchRoutes from "./routes/search";
 import subscriptionRoutes from "./routes/subscription";
 import stripeWebhookRoutes from "./routes/stripeWebhook";
 import adminRoutes from "./routes/admin";
+import internalRoutes from "./routes/internal";
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/dev", devRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/internal", internalRoutes);
 
 app.use("/api", profileRoutes);
 app.use("/api", taskRoutes);

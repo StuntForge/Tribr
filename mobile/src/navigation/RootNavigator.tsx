@@ -3,17 +3,22 @@ import { ActivityIndicator, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { useTutorialSeen } from "../hooks/useTutorialSeen";
+import { usePushNotifications } from "../hooks/usePushNotifications";
+import { useNotificationTapNavigation } from "../hooks/useNotificationTapNavigation";
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
 import CreateProfileScreen from "../screens/auth/CreateProfileScreen";
 import TutorialPager from "../components/TutorialPager";
 import { colors } from "../theme";
+import { navigationRef } from "./navigationRef";
 
 export default function RootNavigator() {
   const { loading, isAuthenticated, profile } = useAuth();
   const { loading: tutorialLoading, seen: tutorialSeen, markSeen } = useTutorialSeen();
 
   const readyToGateTutorial = isAuthenticated && profile?.profileComplete;
+  usePushNotifications(Boolean(readyToGateTutorial));
+  useNotificationTapNavigation();
 
   if (loading || (readyToGateTutorial && tutorialLoading)) {
     return (
@@ -24,7 +29,7 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       {!isAuthenticated ? (
         <AuthStack />
       ) : !profile?.profileComplete ? (

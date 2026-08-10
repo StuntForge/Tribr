@@ -33,7 +33,7 @@ export default function Broadcast() {
   return (
     <div>
       <h2>Broadcast</h2>
-      <p className="hint">Send an in-app announcement to every active user's notification centre.</p>
+      <p className="hint">Send an announcement to every active user's notification centre, and as a push notification to anyone with the app installed.</p>
 
       <div className="card">
         <div className="field">

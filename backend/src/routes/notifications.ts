@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { notifyUser } from "../services/notify";
@@ -6,6 +7,22 @@ import { getCurrentCycle, parseOrder } from "./groups";
 
 const router = Router();
 router.use(requireAuth);
+
+// 8.x - the device registers (or re-registers, on every app launch - tokens
+// can change) its Expo push token plus its IANA timezone, the latter used
+// only for the daily midday digest.
+const pushTokenSchema = z.object({ token: z.string().min(1), timezone: z.string().min(1).optional() });
+
+router.post("/me/push-token", async (req, res) => {
+  const parsed = pushTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  await prisma.user.update({
+    where: { id: req.userId },
+    data: { expoPushToken: parsed.data.token, ...(parsed.data.timezone ? { timezone: parsed.data.timezone } : {}) },
+  });
+  res.json({ ok: true });
+});
 
 // These types now surface as live "Action Needed" items instead (see
 // /me/action-items below) - keeping them out of the plain feed avoids
@@ -59,7 +76,7 @@ async function generateDueReminders(userId: string) {
       `${type}:${wd.id}`,
       isSameDay ? "Work day is today" : "Work day tomorrow",
       `${wd.task.name} - ${dateLabel}`,
-      { taskId: wd.taskId, groupId: wd.task.groupId }
+      { taskId: wd.taskId, taskName: wd.task.name, groupId: wd.task.groupId }
     );
   }
 }
@@ -94,7 +111,7 @@ router.get("/", async (req, res) => {
   );
 });
 
-interface ActionItem {
+export interface ActionItem {
   id: string;
   type: string;
   title: string;
@@ -110,9 +127,10 @@ interface ActionItem {
 // here is a stored row the user can dismiss. Each item is derived live from
 // current app state, so it can only disappear by the underlying thing
 // actually getting done (submit availability, pick a date, cast a ballot,
-// etc), never by swiping it away.
-router.get("/me/action-items", async (req, res) => {
-  const userId = req.userId!;
+// etc), never by swiping it away. Exported (rather than inlined in the
+// route) so the daily digest can reuse the exact same "what does this user
+// still need to do" computation instead of drifting out of sync with it.
+export async function computeActionItems(userId: string): Promise<ActionItem[]> {
   const items: ActionItem[] = [];
 
   const memberships = await prisma.groupMember.findMany({
@@ -251,7 +269,11 @@ router.get("/me/action-items", async (req, res) => {
   }
 
   items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  res.json(items);
+  return items;
+}
+
+router.get("/me/action-items", async (req, res) => {
+  res.json(await computeActionItems(req.userId!));
 });
 
 // Swiping a notification away removes it outright - there's no "archive"
