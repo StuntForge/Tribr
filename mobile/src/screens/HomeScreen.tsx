@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Image, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { MotiView } from "moti";
@@ -19,10 +19,21 @@ import IllustrationCard from "../components/IllustrationCard";
 import { colors, radii, shadows, spacing, type } from "../theme";
 
 const NEXT_TASK_EMPTY_IMAGE = require("../../assets/illustrations/processed/home-next-task-empty-state.png");
+const INVITATIONS_ON_IMAGE = require("../../assets/illustrations/processed/invitations-on.png");
+const INVITATIONS_OFF_IMAGE = require("../../assets/illustrations/processed/invitations-off.png");
+const INVITATIONS_ON_ASPECT_RATIO = 1254 / 335;
+const INVITATIONS_OFF_ASPECT_RATIO = 1416 / 273;
+const INVITATIONS_IMAGE_WIDTH = 160;
+const TOGGLE_FLIP_DELAY = 160;
 
 export default function HomeScreen({ navigation }: any) {
   const { profile, refreshProfile } = useAuth();
   const [toggling, setToggling] = useState(false);
+  const [lookingDisplay, setLookingDisplay] = useState(profile?.lookingForGroup ?? false);
+
+  useEffect(() => {
+    if (profile) setLookingDisplay(profile.lookingForGroup);
+  }, [profile?.lookingForGroup]);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
 
@@ -52,17 +63,22 @@ export default function HomeScreen({ navigation }: any) {
     enabled: Boolean(nextWorkDay),
   });
 
-  if (!profile) return null;
-
-  const onToggleLooking = async () => {
+  const onToggleLooking = () => {
+    if (toggling || !profile) return;
+    const next = !profile.lookingForGroup;
     setToggling(true);
-    try {
-      await setLookingForGroup(!profile.lookingForGroup);
-      await refreshProfile();
-    } finally {
-      setToggling(false);
-    }
+    setTimeout(async () => {
+      setLookingDisplay(next);
+      try {
+        await setLookingForGroup(next);
+        await refreshProfile();
+      } finally {
+        setToggling(false);
+      }
+    }, TOGGLE_FLIP_DELAY);
   };
+
+  if (!profile) return null;
 
   let cardIndex = 0;
   const nextDelay = () => cardIndex++ * 70;
@@ -79,7 +95,10 @@ export default function HomeScreen({ navigation }: any) {
     >
       <WaveHeader>
         <View style={styles.topRow}>
-          <TribrLogo />
+          <View style={styles.logoCenter} pointerEvents="none">
+            <TribrLogo />
+          </View>
+          <View style={{ flex: 1 }} />
           <AnimatedPressable style={styles.bellButton} onPress={() => navigation.navigate("Notifications")}>
             <Ionicons name="notifications-outline" size={22} color="#fff" />
           </AnimatedPressable>
@@ -105,20 +124,20 @@ export default function HomeScreen({ navigation }: any) {
           </View>
 
           <View style={styles.heroRight}>
-            <View style={styles.togglingRow}>
-              <Text style={styles.togglingLabel}>Open to invitations</Text>
-              <AnimatedPressable
-                style={[styles.switchTrack, profile.lookingForGroup && styles.switchTrackActive]}
-                onPress={onToggleLooking}
-                disabled={toggling}
-              >
-                <View style={[styles.switchThumb, profile.lookingForGroup && styles.switchThumbActive]} />
-              </AnimatedPressable>
-            </View>
+            <AnimatedPressable onPress={onToggleLooking} disabled={toggling}>
+              <Image
+                source={lookingDisplay ? INVITATIONS_ON_IMAGE : INVITATIONS_OFF_IMAGE}
+                style={{
+                  width: INVITATIONS_IMAGE_WIDTH,
+                  height: INVITATIONS_IMAGE_WIDTH / (lookingDisplay ? INVITATIONS_ON_ASPECT_RATIO : INVITATIONS_OFF_ASPECT_RATIO),
+                }}
+                resizeMode="contain"
+              />
+            </AnimatedPressable>
             <View style={styles.heroDivider} />
             <AnimatedPressable style={styles.ratingBlock} onPress={() => setBreakdownOpen((v) => !v)}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.togglingLabel}>Your rating</Text>
+                <Text style={styles.ratingLabel}>Your rating</Text>
                 <View style={styles.ratingValueRow}>
                   <Ionicons name="star" size={15} color={colors.star} />
                   <Text style={styles.ratingValueText}>
@@ -357,7 +376,8 @@ function BreakdownLine({ label, value }: { label: string; value: number | null }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.lg },
+  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.lg },
+  logoCenter: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   bellButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   heroRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
   heroLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
@@ -373,24 +393,12 @@ const styles = StyleSheet.create({
   greetingEyebrow: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "600" },
   greeting: { color: "#fff", fontSize: 21, fontWeight: "700", marginTop: 1 },
   meta: { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 },
-  heroRight: { alignItems: "flex-end", minWidth: 150 },
-  togglingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  togglingLabel: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "600" },
+  heroRight: { alignItems: "flex-end", minWidth: INVITATIONS_IMAGE_WIDTH },
   heroDivider: { height: 1, alignSelf: "stretch", backgroundColor: "rgba(255,255,255,0.18)", marginVertical: spacing.sm },
   ratingBlock: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "stretch" },
+  ratingLabel: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "600" },
   ratingValueRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   ratingValueText: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  switchTrack: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    padding: 3,
-    justifyContent: "center",
-  },
-  switchTrackActive: { backgroundColor: colors.accent },
-  switchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" },
-  switchThumbActive: { alignSelf: "flex-end" },
   breakdownCard: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import Animated, { LinearTransition, SlideOutRight } from "react-native-reanimated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +15,9 @@ import { InfoCard, InfoCardRow } from "../../components/InfoCard";
 import { colors, radii, spacing } from "../../theme";
 
 const EMPTY_IMAGE = require("../../../assets/illustrations/processed/task-library-empty-state.png");
+const ADD_BUTTON_IMAGE = require("../../../assets/illustrations/processed/add-task-button.png");
+const ADD_BUTTON_IMAGE_PRESSED = require("../../../assets/illustrations/processed/add-task-button-onclick.png");
+const ADD_BUTTON_ASPECT_RATIO = 1413 / 433;
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   DRAFT: "Draft",
@@ -48,6 +51,7 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
   const { data: tasks, isLoading, refetch, isRefetching } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks });
   const mode = route.params?.mode as "completed" | undefined;
   const [tab, setTab] = useState<Tab>("active");
+  const [addButtonPressed, setAddButtonPressed] = useState(false);
 
   const limit = profile?.subscriptionTier === "SUBSCRIBER" ? 20 : 1;
   const activeTasks = tasks?.filter((t) => t.status !== "ARCHIVED" && t.status !== "USER_ARCHIVED") ?? [];
@@ -126,14 +130,22 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
       <WaveHeader>
         <View style={styles.topRow}>
           <TribrLogo />
-          <AnimatedPressable style={[styles.addButton, atLimit && styles.addButtonDisabled]} onPress={onAddTask} disabled={atLimit}>
-            <View style={[styles.addButtonIcon, atLimit && styles.addButtonIconDisabled]}>
-              <Ionicons name="add" size={18} color="#fff" />
-            </View>
-            <Text style={styles.addButtonText}>{atLimit ? "Limit reached" : "Add a task"}</Text>
+        </View>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>My Tasks</Text>
+          <AnimatedPressable
+            onPress={onAddTask}
+            onPressIn={() => setAddButtonPressed(true)}
+            onPressOut={() => setAddButtonPressed(false)}
+            disabled={atLimit}
+          >
+            <Image
+              source={addButtonPressed ? ADD_BUTTON_IMAGE_PRESSED : ADD_BUTTON_IMAGE}
+              style={[styles.addButtonImage, atLimit && styles.addButtonImageDisabled]}
+              resizeMode="contain"
+            />
           </AnimatedPressable>
         </View>
-        <Text style={styles.title}>My Tasks</Text>
         <View style={styles.subtitleRow}>
           <Text style={styles.subtitle}>
             {countedActiveTasks.length} of {limit} active task{limit === 1 ? "" : "s"} used
@@ -255,19 +267,10 @@ const styles = StyleSheet.create({
   simpleHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.sm },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   simpleHeaderTitle: { fontSize: 20, fontWeight: "700", color: colors.text },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
-  addButton: { flexDirection: "row", alignItems: "center", gap: 8 },
-  addButtonDisabled: { opacity: 0.6 },
-  addButtonIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addButtonIconDisabled: { backgroundColor: "rgba(255,255,255,0.3)" },
-  addButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  addButtonImage: { width: 117, height: 117 / ADD_BUTTON_ASPECT_RATIO },
+  addButtonImageDisabled: { opacity: 0.5 },
   title: { color: "#fff", fontSize: 26, fontWeight: "800" },
   subtitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13 },

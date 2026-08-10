@@ -12,6 +12,8 @@ const AnimatedPressableBase = Animated.createAnimatedComponent(Pressable);
 export default function AnimatedPressable({
   children,
   onPress,
+  onPressIn,
+  onPressOut,
   style,
   disabled,
   accessibilityRole,
@@ -20,6 +22,8 @@ export default function AnimatedPressable({
 }: {
   children: React.ReactNode;
   onPress?: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
   accessibilityRole?: "button" | "link" | "radio" | "none";
@@ -45,10 +49,12 @@ export default function AnimatedPressable({
       onPressIn={() => {
         scale.value = withSpring(0.96, { damping: 14, stiffness: 300 });
         opacity.value = withSpring(0.85);
+        onPressIn?.();
       }}
       onPressOut={() => {
         scale.value = withSpring(1, { damping: 10, stiffness: 200 });
         opacity.value = withSpring(1);
+        onPressOut?.();
       }}
     >
       {children}

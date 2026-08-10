@@ -90,7 +90,9 @@ export default function BrowseGroupsScreen({ navigation }: any) {
           <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </AnimatedPressable>
-          <TribrLogo />
+          <View style={styles.logoCenter} pointerEvents="none">
+            <TribrLogo />
+          </View>
         </View>
         <Text style={styles.title}>Find a Tribe</Text>
         <Text style={styles.subtitle}>Find local Tribes and start getting things done together.</Text>
@@ -345,6 +347,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { marginBottom: 0 },
   topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  logoCenter: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   title: { color: "#fff", fontSize: 22, fontWeight: "800" },
   subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4 },

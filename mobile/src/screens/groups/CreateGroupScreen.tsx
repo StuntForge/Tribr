@@ -59,12 +59,14 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   });
 
   const Header = (
-    <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={170} aspectRatio={1449 / 796} />}>
+    <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={170} aspectRatio={1252 / 789} />}>
       <View style={styles.topRow}>
         <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </AnimatedPressable>
-        <TribrLogo />
+        <View style={styles.logoCenter} pointerEvents="none">
+          <TribrLogo />
+        </View>
       </View>
       <Text style={styles.title}>Form a Tribe</Text>
       <Text style={styles.subtitle}>Set up your Tribe and invite others to get things done together.</Text>
@@ -259,6 +261,7 @@ function AgeSelect({ label, value, onChange }: { label: string; value: number | 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  logoCenter: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   title: { color: "#fff", fontSize: 24, fontWeight: "800" },
   subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, lineHeight: 18, maxWidth: "80%" },

@@ -12,6 +12,8 @@ import AnimatedPressable from "../components/AnimatedPressable";
 import FieldLabel from "../components/FieldLabel";
 import { colors, spacing } from "../theme";
 
+const HEADER_DECORATION = require("../../assets/illustrations/processed/settings-header.png");
+
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Pescatarian", "No Seafood", "Lactose Intolerant", "Kosher", "Halal", "Food Allergies"];
 
 export default function EditProfileScreen({ navigation }: any) {
@@ -89,7 +91,10 @@ export default function EditProfileScreen({ navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
-      <WaveHeader contentStyle={styles.headerContent}>
+      <WaveHeader
+        contentStyle={styles.headerContent}
+        illustration={<Image source={HEADER_DECORATION} style={styles.headerDecoration} resizeMode="contain" />}
+      >
         <View style={styles.topRow}>
           <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -211,6 +216,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xl },
   form: { paddingHorizontal: spacing.lg },
   headerContent: { alignItems: "center" },
+  headerDecoration: { width: 200, height: 228, opacity: 0.55 },
   topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "stretch", marginBottom: spacing.md },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   headerTitle: { color: "#fff", fontSize: 20, fontWeight: "800" },

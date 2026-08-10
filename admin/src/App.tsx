@@ -10,6 +10,7 @@ import Subscriptions from "./pages/Subscriptions";
 import JobCategories from "./pages/JobCategories";
 import Broadcast from "./pages/Broadcast";
 import AuditLog from "./pages/AuditLog";
+import SeedData from "./pages/SeedData";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { admin, logout } = useAuth();
@@ -25,6 +26,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         <NavLink to="/subscriptions">Subscriptions</NavLink>
         <NavLink to="/job-categories">Job Categories</NavLink>
         <NavLink to="/broadcast">Broadcast</NavLink>
+        <NavLink to="/seed-data">Seed Demo Data</NavLink>
         <NavLink to="/audit-log">Audit Log</NavLink>
         <div className="logout">
           <p style={{ fontSize: 12, padding: "0 20px", opacity: 0.7 }}>{admin?.email}</p>
@@ -114,6 +116,14 @@ function AppRoutes() {
         element={
           <Protected>
             <Broadcast />
+          </Protected>
+        }
+      />
+      <Route
+        path="/seed-data"
+        element={
+          <Protected>
+            <SeedData />
           </Protected>
         }
       />

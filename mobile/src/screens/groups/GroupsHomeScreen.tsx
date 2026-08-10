@@ -51,7 +51,10 @@ export default function GroupsHomeScreen({ navigation }: any) {
     <View style={styles.container}>
       <WaveHeader>
         <View style={styles.topRow}>
-          <TribrLogo />
+          <View style={styles.logoCenter} pointerEvents="none">
+            <TribrLogo />
+          </View>
+          <View style={{ flex: 1 }} />
           <AnimatedPressable style={styles.bellButton} onPress={() => navigation.navigate("MyInvitations")}>
             <Ionicons name="notifications-outline" size={22} color="#fff" />
             {invitationCount > 0 && <View style={styles.bellBadge} />}
@@ -107,7 +110,7 @@ export default function GroupsHomeScreen({ navigation }: any) {
               icon="people"
               badgeIcon="hand-left"
               image={GROUPS_EMPTY_IMAGE}
-              imageAspectRatio={1388 / 831}
+              imageAspectRatio={1403 / 881}
               title="You're not in a Tribe yet"
               body={'Tap "Find a Tribe" above to apply with one of your tasks, or form your own Tribe if you\'re a Subscriber.'}
             >
@@ -177,7 +180,8 @@ function MenuButton({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
+  logoCenter: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   bellButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   bellBadge: {
     position: "absolute",

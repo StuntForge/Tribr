@@ -117,7 +117,7 @@ export default function NotificationsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={125} aspectRatio={1127 / 1022} />}>
+      <WaveHeader illustration={<IllustrationCard source={HEADER_IMAGE} width={125} aspectRatio={1066 / 895} />}>
         <View style={styles.topRow}>
           <TribrLogo />
         </View>
@@ -232,7 +232,7 @@ function ActionItemRow({ item, onPress }: { item: ActionItem; onPress: () => voi
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
   headerTitle: { color: "#fff", fontSize: 26, fontWeight: "800" },
   subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 14, marginTop: 4, maxWidth: "75%" },
   headerIllustration: {

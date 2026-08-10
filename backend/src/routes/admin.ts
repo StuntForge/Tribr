@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAdminAuth, logAdminAction } from "../middleware/adminAuth";
 import { signAdminToken } from "../services/adminJwt";
+import { runFullSpectrumSeed, deleteDemoData } from "../services/demoData";
 
 const router = Router();
 
@@ -266,6 +267,40 @@ router.post("/broadcast", async (req, res) => {
 
   await logAdminAction(req.adminId!, "BROADCAST_SENT", "User", undefined, `"${parsed.data.title}" to ${users.length} users`);
   res.json({ ok: true, recipientCount: users.length });
+});
+
+// ---------- Demo data (full-spectrum seed) ----------
+
+router.post("/seed-full-spectrum", async (req, res) => {
+  try {
+    const result = await runFullSpectrumSeed();
+    await logAdminAction(
+      req.adminId!,
+      "DEMO_DATA_SEEDED",
+      "User",
+      undefined,
+      `${result.usersCreated} users, ${result.groupsCreated} groups`
+    );
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message ?? "Seed failed." });
+  }
+});
+
+router.post("/delete-demo-data", async (req, res) => {
+  try {
+    const result = await deleteDemoData();
+    await logAdminAction(
+      req.adminId!,
+      "DEMO_DATA_DELETED",
+      "User",
+      undefined,
+      `${result.usersDeleted} users, ${result.groupsDeleted} groups (${result.protectedUsers} protected users skipped)`
+    );
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message ?? "Delete failed." });
+  }
 });
 
 // ---------- Audit log (8.11) ----------

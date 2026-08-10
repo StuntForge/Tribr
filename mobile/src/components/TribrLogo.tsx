@@ -10,5 +10,5 @@ export default function TribrLogo() {
 }
 
 const styles = StyleSheet.create({
-  logo: { height: HEIGHT, width: HEIGHT * ASPECT_RATIO },
+  logo: { height: HEIGHT, width: HEIGHT * ASPECT_RATIO, marginTop: 6 },
 });

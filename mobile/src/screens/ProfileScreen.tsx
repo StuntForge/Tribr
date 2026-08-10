@@ -108,7 +108,7 @@ export default function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },
-  headerDecoration: { width: 100, height: 114, opacity: 0.55 },
+  headerDecoration: { width: 200, height: 228, opacity: 0.55 },
   headerContent: { alignItems: "center" },
   avatarWrap: { marginBottom: spacing.sm },
   avatarRing: {
