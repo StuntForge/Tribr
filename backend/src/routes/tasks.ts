@@ -6,6 +6,14 @@ import { requireAuth } from "../middleware/auth";
 const router = Router();
 router.use(requireAuth);
 
+// Tribr doesn't support jobs longer than a day, so the estimate is a coarse
+// band rather than an open-ended hours figure - simpler for the person
+// setting it, and directly usable as a compatibility check against a
+// group's maximum job length.
+export const JOB_LENGTHS = ["FEW_HOURS", "HALF_DAY", "FULL_DAY"] as const;
+const jobLengthSchema = z.enum(JOB_LENGTHS);
+export const JOB_LENGTH_RANK: Record<string, number> = { FEW_HOURS: 0, HALF_DAY: 1, FULL_DAY: 2 };
+
 const FREE_TASK_LIMIT = 1;
 const SUBSCRIBER_TASK_LIMIT = 20;
 
@@ -56,7 +64,7 @@ async function serializeTask(
     name: task.name,
     category: { id: task.category.id, name: task.category.name },
     description: task.description,
-    estimatedManHours: task.estimatedManHours,
+    jobLength: task.jobLength,
     locationType: task.locationType,
     locationLabel: usingHome ? owner.locationLabel : task.locationLabel,
     locationLat: usingHome ? owner.locationLat : task.locationLat,
@@ -121,7 +129,7 @@ router.get("/tasks/:id/public", async (req, res) => {
     name: task.name,
     category: { id: task.category.id, name: task.category.name },
     description: task.description,
-    estimatedManHours: task.estimatedManHours,
+    jobLength: task.jobLength,
     locationLabel: usingHome ? task.owner.locationLabel : task.locationLabel,
     status: task.status,
     photos: task.photos.map((p) => ({ id: p.id, url: p.url })),
@@ -146,7 +154,7 @@ const createTaskSchema = z.object({
   name: z.string().min(1).max(100),
   categoryId: z.string().min(1),
   description: z.string().min(1).max(2000),
-  estimatedManHours: z.number().positive().max(1000),
+  jobLength: jobLengthSchema,
   location: locationSchema,
   notes: z.string().max(1000).optional(),
   isDraft: z.boolean().optional(),
@@ -158,7 +166,7 @@ router.post("/tasks", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
-  const { name, categoryId, description, estimatedManHours, location, notes, isDraft } = parsed.data;
+  const { name, categoryId, description, jobLength, location, notes, isDraft } = parsed.data;
 
   const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
   const category = await prisma.jobCategory.findUnique({ where: { id: categoryId } });
@@ -185,7 +193,8 @@ router.post("/tasks", async (req, res) => {
       name,
       categoryId,
       description,
-      estimatedManHours,
+      jobLength,
+      estimatedManHours: 0,
       locationType: location.type,
       locationLabel: location.type === "CHOOSE" ? location.label : null,
       locationLat: location.type === "CHOOSE" ? location.lat : null,
@@ -204,7 +213,7 @@ const updateTaskSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   categoryId: z.string().min(1).optional(),
   description: z.string().min(1).max(2000).optional(),
-  estimatedManHours: z.number().positive().max(1000).optional(),
+  jobLength: jobLengthSchema.optional(),
   location: locationSchema.optional(),
   notes: z.string().max(1000).optional(),
 });

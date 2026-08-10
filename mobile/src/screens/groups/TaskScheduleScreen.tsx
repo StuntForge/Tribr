@@ -78,15 +78,15 @@ export default function TaskScheduleScreen({ route }: any) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["schedule", groupId, taskId] });
 
-  const respondMutation = useMutation({
-    mutationFn: ({ dateOptionId, available }: { dateOptionId: string; available: boolean }) =>
-      respondAvailability(groupId, taskId, dateOptionId, available),
-    onSuccess: invalidate,
-    onError: (e: any) => setError(e.message ?? "Something went wrong."),
-  });
-
+  // Only the dates marked available get posted - anything left off is
+  // treated as unavailable automatically once submitted (see the submit
+  // endpoint). That means tapping a date is a purely local, instant toggle
+  // with zero network calls; the only round trips happen once, on Submit.
   const submitMutation = useMutation({
-    mutationFn: () => submitAvailability(groupId, taskId),
+    mutationFn: async (availableDateOptionIds: string[]) => {
+      await Promise.all(availableDateOptionIds.map((id) => respondAvailability(groupId, taskId, id, true)));
+      await submitAvailability(groupId, taskId);
+    },
     onSuccess: invalidate,
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
@@ -198,18 +198,7 @@ export default function TaskScheduleScreen({ route }: any) {
       ) : (
         <MemberRespondView
           options={schedule.proposal.options}
-          onToggle={(id, available) => respondMutation.mutate({ dateOptionId: id, available })}
-          onSubmit={() => {
-            const unanswered = schedule.proposal!.options.filter((o) => o.myResponse == null);
-            if (unanswered.length > 0) {
-              Alert.alert(
-                "Respond to every date",
-                "Let the Tribe know your availability for each proposed date before submitting.",
-              );
-              return;
-            }
-            submitMutation.mutate();
-          }}
+          onSubmit={(availableIds) => submitMutation.mutate(availableIds)}
           busy={submitMutation.isPending}
         />
       )}
@@ -345,53 +334,60 @@ function OwnerReviewView({
 
 function MemberRespondView({
   options,
-  onToggle,
   onSubmit,
   busy,
 }: {
   options: DateOptionInfo[];
-  onToggle: (id: string, available: boolean) => void;
-  onSubmit: () => void;
+  onSubmit: (availableDateOptionIds: string[]) => void;
   busy: boolean;
 }) {
+  // Purely local until Submit - toggling a date is instant with no network
+  // call. Anything left off defaults to "not available" (both here and on
+  // the server once submitted), so there's nothing to force-answer first.
+  const [available, setAvailable] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setAvailable((prev) => ({ ...prev, [id]: !prev[id] }));
+
   const markedDates: Record<string, any> = {};
   for (const option of options) {
     const dateString = toDateString(new Date(option.date));
-    const color = option.myResponse === true ? colors.primary : option.myResponse === false ? colors.danger : colors.textMuted;
-    markedDates[dateString] = { marked: true, dotColor: color, selected: option.myResponse != null, selectedColor: color };
+    const isAvailable = Boolean(available[option.id]);
+    const color = isAvailable ? colors.primary : colors.danger;
+    markedDates[dateString] = { marked: true, dotColor: color, selected: true, selectedColor: color };
   }
-
-  const toggle = (option: DateOptionInfo) => onToggle(option.id, !(option.myResponse === true));
 
   const onDayPress = (day: { dateString: string }) => {
     const option = options.find((o) => toDateString(new Date(o.date)) === day.dateString);
-    if (option) toggle(option);
+    if (option) toggle(option.id);
   };
 
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>When can you make it?</Text>
-      <Text style={styles.hint}>Tap a marked date to toggle your availability, then submit.</Text>
+      <Text style={styles.hint}>Switch on the dates you're available for, then submit. Anything left off counts as not available.</Text>
       <Calendar markedDates={markedDates} onDayPress={onDayPress} theme={calendarTheme} style={styles.calendar} />
 
-      {options.map((option) => (
-        <TouchableOpacity key={option.id} style={styles.optionCard} onPress={() => toggle(option)}>
-          <Text style={styles.optionDate}>
-            {formatDateLabel(toDateString(new Date(option.date)))} {option.startTime ? formatTime12h(option.startTime) : ""}
-          </Text>
-          <Text
-            style={[
-              styles.responseTag,
-              option.myResponse === true && styles.responseTagYes,
-              option.myResponse === false && styles.responseTagNo,
-            ]}
-          >
-            {option.myResponse == null ? "Tap to respond" : option.myResponse ? "Available" : "Can't make it"}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {options.map((option) => {
+        const isAvailable = Boolean(available[option.id]);
+        return (
+          <View key={option.id} style={styles.optionCard}>
+            <View style={styles.availabilityRow}>
+              <Text style={styles.optionDate}>
+                {formatDateLabel(toDateString(new Date(option.date)))} {option.startTime ? formatTime12h(option.startTime) : ""}
+              </Text>
+              <Switch value={isAvailable} onValueChange={() => toggle(option.id)} trackColor={{ false: colors.border, true: colors.primary }} />
+            </View>
+            <Text style={[styles.responseTag, isAvailable ? styles.responseTagYes : styles.responseTagNo]}>
+              {isAvailable ? "Available" : "Not available"}
+            </Text>
+          </View>
+        );
+      })}
 
-      <TouchableOpacity style={styles.primaryButtonSmall} onPress={onSubmit} disabled={busy}>
+      <TouchableOpacity
+        style={styles.primaryButtonSmall}
+        onPress={() => onSubmit(Object.keys(available).filter((id) => available[id]))}
+        disabled={busy}
+      >
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Submit my availability</Text>}
       </TouchableOpacity>
       <Text style={styles.hint}>Once submitted you won't be able to change your answers for this round.</Text>
@@ -532,6 +528,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   optionCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginBottom: spacing.sm },
+  availabilityRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   optionDate: { fontSize: 14, fontWeight: "600", color: colors.text },
   submittedRow: {
     flexDirection: "row",

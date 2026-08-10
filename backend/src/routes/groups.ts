@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
 import { computeRatingSummary, revealCycleRatings } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
+import { JOB_LENGTHS, JOB_LENGTH_RANK } from "./tasks";
 
 const uploadDir = path.join(__dirname, "..", "..", "uploads");
 
@@ -255,6 +256,14 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     });
   }
 
+  // So the queue can tell "active, still needs a date" apart from "active,
+  // date's confirmed, just waiting on the day" - the Schedule button and
+  // "Active now" label only make sense before a date's actually locked in.
+  const confirmedWorkDayTaskIds =
+    cycle && refreshedGroup.state === "WORKING"
+      ? new Set((await prisma.workDay.findMany({ where: { taskId: { in: order } }, select: { taskId: true } })).map((w) => w.taskId))
+      : new Set<string>();
+
   // 9.5 - visual progress through the current cycle.
   const progress = cycle
     ? {
@@ -298,7 +307,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
           joinedAt: m.joinedAt,
           rating: memberRatings[i],
           currentTask: task
-            ? { id: task.id, name: task.name, status: task.status, category: task.category.name, estimatedManHours: task.estimatedManHours }
+            ? { id: task.id, name: task.name, status: task.status, category: task.category.name, jobLength: task.jobLength }
             : null,
         };
       })
@@ -328,6 +337,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
               ownerName: t.owner.firstName,
               status: t.status,
               isActive: index === 0,
+              workDayConfirmed: confirmedWorkDayTaskIds.has(t.id),
             }))
         : [],
     progress,
@@ -404,6 +414,10 @@ router.get("/groups/browse", async (req, res) => {
   const sizeMin = isSubscriber && typeof req.query.sizeMin === "string" ? Number(req.query.sizeMin) : undefined;
   const sizeMax = isSubscriber && typeof req.query.sizeMax === "string" ? Number(req.query.sizeMax) : undefined;
   const maxDistanceMiles = typeof req.query.maxDistanceMiles === "string" ? Number(req.query.maxDistanceMiles) : undefined;
+  const jobLength =
+    typeof req.query.jobLength === "string" && (JOB_LENGTHS as readonly string[]).includes(req.query.jobLength)
+      ? req.query.jobLength
+      : undefined;
 
   const groups = await prisma.group.findMany({
     where: {
@@ -412,6 +426,11 @@ router.get("/groups/browse", async (req, res) => {
       ...(categoryId ? { allowedCategories: { some: { categoryId } } } : {}),
       ...(sizeMin != null ? { sizeMax: { gte: sizeMin } } : {}),
       ...(sizeMax != null ? { sizeMin: { lte: sizeMax } } : {}),
+      // A group's maximum job length (durationBand) is a hard filter here -
+      // no point showing a group that couldn't accept a task this long.
+      ...(jobLength
+        ? { OR: [{ durationBand: null }, { durationBand: { in: JOB_LENGTHS.filter((l) => JOB_LENGTH_RANK[l] >= JOB_LENGTH_RANK[jobLength]) } }] }
+        : {}),
       // A group's preferred age range is a hard visibility filter, not just
       // an "ineligible but visible" gate like verifiedOnly/minRating - a
       // group outside your age range shouldn't show up at all. Only applied
@@ -450,6 +469,11 @@ router.get("/groups/browse", async (req, res) => {
       const meetsRating = g.minRating == null || (viewerRatings.overallRating != null && viewerRatings.overallRating >= g.minRating);
       const meetsVerified = !g.verifiedOnly || viewerRatings.completedCycles > 0;
 
+      const leaderTask = await prisma.task.findFirst({
+        where: { groupId: g.id, ownerId: g.leaderId },
+        include: { photos: true },
+      });
+
       return {
         id: g.id,
         name: g.name,
@@ -464,6 +488,7 @@ router.get("/groups/browse", async (req, res) => {
         memberCount: g.members.length,
         leaderName: g.leader.firstName,
         leaderIsPro: g.leader.subscriptionTier === "SUBSCRIBER",
+        leaderTaskPhotoUrl: leaderTask?.photos[0]?.url ?? null,
         averageMemberRating,
         state: g.state,
         createdAt: g.createdAt,
@@ -535,6 +560,7 @@ router.get("/groups/nearby-recruiting", async (req, res) => {
         approxDistanceMiles,
         memberCount: g.members.length,
         sizeMin: g.sizeMin,
+        sizeMax: g.sizeMax,
         members: g.members.slice(0, 4).map((m) => ({ firstName: m.user.firstName, photoUrl: m.user.profilePhotoUrl })),
       };
     })
@@ -559,12 +585,12 @@ const createGroupSchema = z.object({
   preferredAgeMin: z.number().int().optional(),
   preferredAgeMax: z.number().int().optional(),
   preferredGender: z.string().optional(),
-  durationBand: z.string().optional(),
-  sizeMin: z.number().int().min(2).max(50),
-  sizeMax: z.number().int().min(2).max(50),
+  durationBand: z.enum(JOB_LENGTHS).optional(),
+  sizeMin: z.number().int().min(3).max(6),
+  sizeMax: z.number().int().min(3).max(6),
   taskId: z.string().min(1),
   verifiedOnly: z.boolean().optional(),
-  minRating: z.number().min(0).max(5).multipleOf(0.5).optional(),
+  minRating: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
 });
 
 // 4.2 - only subscribers may create groups; creator becomes leader + first member.
@@ -638,7 +664,7 @@ const updateGroupSchema = z.object({
   preferredAgeMin: z.number().int().optional(),
   preferredAgeMax: z.number().int().optional(),
   preferredGender: z.string().optional(),
-  durationBand: z.string().optional(),
+  durationBand: z.enum(JOB_LENGTHS).optional(),
   sizeMin: z.number().int().min(2).max(50).optional(),
   sizeMax: z.number().int().min(2).max(50).optional(),
 });
@@ -727,6 +753,9 @@ router.post("/groups/:id/apply", async (req, res) => {
   if (allowedCategoryIds.length > 0 && !allowedCategoryIds.some((ac) => ac.categoryId === task.categoryId)) {
     return res.status(400).json({ error: "This task's category isn't one this group accepts." });
   }
+  if (group.durationBand && task.jobLength && JOB_LENGTH_RANK[task.jobLength] > JOB_LENGTH_RANK[group.durationBand]) {
+    return res.status(400).json({ error: "This task is longer than this group's maximum job length." });
+  }
 
   const existingMember = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: group.id, userId: req.userId! } },
@@ -775,7 +804,7 @@ router.get("/groups/:id/applications", async (req, res) => {
     applications.map((a) => ({
       id: a.id,
       applicant: { id: a.applicant.id, firstName: a.applicant.firstName, isPro: a.applicant.subscriptionTier === "SUBSCRIBER" },
-      task: { id: a.task.id, name: a.task.name, category: a.task.category.name, estimatedManHours: a.task.estimatedManHours },
+      task: { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength },
       message: a.message,
       createdAt: a.createdAt,
     }))
@@ -1082,7 +1111,7 @@ router.get("/groups/:id/current-tasks", async (req, res) => {
               name: task.name,
               description: task.description,
               category: task.category.name,
-              estimatedManHours: task.estimatedManHours,
+              jobLength: task.jobLength,
               status: task.status,
               photos: task.photos.map((p) => ({ id: p.id, url: p.url })),
             }

@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View }
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getGroupCurrentTasks, GroupCurrentTaskMember } from "../../api/groups";
+import { jobLengthLabel } from "../../constants/jobLength";
 import PhotoGallery from "../../components/PhotoGallery";
 import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
@@ -67,7 +68,7 @@ function MemberTaskCard({
               <Text style={styles.categoryBadgeText}>{member.task.category}</Text>
             </View>
           </View>
-          <Text style={styles.taskMeta}>{member.task.estimatedManHours} man hours</Text>
+          <Text style={styles.taskMeta}>{jobLengthLabel(member.task.jobLength)}</Text>
           <Text style={styles.taskDescription}>{member.task.description}</Text>
           {member.task.photos.length > 0 && (
             <View style={styles.photoWrap}>

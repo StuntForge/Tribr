@@ -29,10 +29,10 @@ import PostcodeInput from "../../components/PostcodeInput";
 import WaveHeader from "../../components/WaveHeader";
 import AnimatedPressable from "../../components/AnimatedPressable";
 import FieldLabel from "../../components/FieldLabel";
-import StepperInput from "../../components/StepperInput";
 import IllustrationCard from "../../components/IllustrationCard";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, spacing } from "../../theme";
+import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength } from "../../constants/jobLength";
 
 const HEADER_IMAGE = require("../../../assets/illustrations/processed/add-a-task-header.png");
 
@@ -50,7 +50,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  const [hours, setHours] = useState(6);
+  const [jobLength, setJobLength] = useState<JobLength | null>(null);
   const [locationType, setLocationType] = useState<"HOME" | "CHOOSE">("HOME");
   const [postcode, setPostcode] = useState("");
   const [locationLabel, setLocationLabel] = useState("");
@@ -71,7 +71,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       setName(existingTask.name);
       setCategoryId(existingTask.category.id);
       setDescription(existingTask.description);
-      setHours(existingTask.estimatedManHours);
+      setJobLength((existingTask.jobLength as JobLength | null) ?? null);
       setLocationType(existingTask.locationType);
       setLocationLabel(existingTask.locationType === "CHOOSE" ? existingTask.locationLabel ?? "" : "");
       setLocationLat(existingTask.locationLat ?? undefined);
@@ -172,6 +172,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     if (!name.trim()) return setError("Give the task a name."), null;
     if (!categoryId) return setError("Choose a job category."), null;
     if (!description.trim()) return setError("Add a short description."), null;
+    if (!jobLength) return setError("Choose how long this job will take."), null;
     if (locationType === "CHOOSE" && !locationLabel.trim()) return setError("Enter a location."), null;
     if (photoCount < 1) return setError("Add at least one photo."), null;
 
@@ -180,7 +181,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       name: name.trim(),
       categoryId,
       description: description.trim(),
-      estimatedManHours: hours,
+      jobLength,
       location:
         locationType === "HOME"
           ? ({ type: "HOME" } as const)
@@ -309,15 +310,18 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
         numberOfLines={4}
       />
 
-      <View style={styles.hoursRow}>
-        <View style={{ flex: 1 }}>
-          <FieldLabel icon="time" label="Estimated man hours" required />
-          <Text style={styles.hint}>
-            One man hour = one person working for one hour. E.g. a fence that takes 2 people 3 hours each is 6 man
-            hours.
-          </Text>
-        </View>
-        <StepperInput value={hours} onChange={setHours} min={1} unit="man hours" />
+      <FieldLabel icon="time" label="Estimate job length" required />
+      <Text style={styles.hint}>Tribr doesn't support tasks that take longer than 1 day.</Text>
+      <View style={styles.chipRow}>
+        {JOB_LENGTHS.map((l) => (
+          <TouchableOpacity
+            key={l}
+            style={[styles.chip, jobLength === l && styles.chipSelected]}
+            onPress={() => setJobLength(l)}
+          >
+            <Text style={[styles.chipText, jobLength === l && styles.chipTextSelected]}>{JOB_LENGTH_LABELS[l]}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <FieldLabel icon="location" label="Location" required />
@@ -445,7 +449,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     margin: 18,
   },
-  hoursRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.md },
   hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.surface,

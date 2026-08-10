@@ -10,6 +10,7 @@ import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
 import LocationMap from "../../components/LocationMap";
 import { colors, radii, shadows, spacing } from "../../theme";
+import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength, jobLengthLabelShort } from "../../constants/jobLength";
 
 const GENDER_OPTIONS = ["Male", "Female", "Other"];
 const RATING_OPTIONS = [null, 2, 2.5, 3, 3.5, 4, 4.5, 5];
@@ -19,6 +20,7 @@ export default function SearchMembersScreen({ route, navigation }: any) {
   const { profile } = useAuth();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [jobLength, setJobLength] = useState<JobLength | null>(null);
   const [view, setView] = useState<"list" | "map">("list");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -36,6 +38,7 @@ export default function SearchMembersScreen({ route, navigation }: any) {
     gender,
     maxDistanceMiles,
     minRating,
+    jobLength,
     favouritesOnly || null,
     hasPhoto || null,
   ].filter((v) => v != null && v !== "").length;
@@ -46,17 +49,19 @@ export default function SearchMembersScreen({ route, navigation }: any) {
     setGender(null);
     setMaxDistanceMiles("");
     setMinRating(null);
+    setJobLength(null);
     setFavouritesOnly(false);
     setHasPhoto(false);
   };
 
   const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories });
   const { data: results, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["member-search", query, categoryId, ageMin, ageMax, gender, maxDistanceMiles, minRating, favouritesOnly, hasPhoto],
+    queryKey: ["member-search", query, categoryId, jobLength, ageMin, ageMax, gender, maxDistanceMiles, minRating, favouritesOnly, hasPhoto],
     queryFn: () =>
       searchMembers({
         query: query || undefined,
         categoryId: categoryId ?? undefined,
+        jobLength: jobLength ?? undefined,
         ageMin: ageMin ? Number(ageMin) : undefined,
         ageMax: ageMax ? Number(ageMax) : undefined,
         gender: gender ?? undefined,
@@ -154,6 +159,22 @@ export default function SearchMembersScreen({ route, navigation }: any) {
                   <Text style={[styles.chipText, minRating === r && styles.chipTextSelected]}>
                     {r == null ? "Any" : `${r.toFixed(1)}★`}
                   </Text>
+                </AnimatedPressable>
+              ))}
+            </View>
+
+            <Text style={styles.filterLabel}>Job length</Text>
+            <View style={styles.chipRow}>
+              <AnimatedPressable style={[styles.chip, jobLength === null && styles.chipSelected]} onPress={() => setJobLength(null)}>
+                <Text style={[styles.chipText, jobLength === null && styles.chipTextSelected]}>Any</Text>
+              </AnimatedPressable>
+              {JOB_LENGTHS.map((l) => (
+                <AnimatedPressable
+                  key={l}
+                  style={[styles.chip, jobLength === l && styles.chipSelected]}
+                  onPress={() => setJobLength(jobLength === l ? null : l)}
+                >
+                  <Text style={[styles.chipText, jobLength === l && styles.chipTextSelected]}>{JOB_LENGTH_LABELS[l]}</Text>
                 </AnimatedPressable>
               ))}
             </View>
@@ -261,7 +282,7 @@ function MemberCard({ member, onPress }: { member: MemberSearchResult; onPress: 
         </View>
         {member.activeTasks.length > 0 && (
           <Text style={styles.cardTask} numberOfLines={1}>
-            Available: {member.activeTasks.map((t) => t.name).join(", ")}
+            Available: {member.activeTasks.map((t) => `${t.name} (${jobLengthLabelShort(t.jobLength)})`).join(", ")}
           </Text>
         )}
       </View>

@@ -21,7 +21,7 @@ export interface Task {
   name: string;
   category: JobCategory;
   description: string;
-  estimatedManHours: number;
+  jobLength: string | null;
   locationType: "HOME" | "CHOOSE";
   locationLabel: string | null;
   locationLat: number | null;
@@ -52,7 +52,7 @@ export interface PublicTask {
   name: string;
   category: JobCategory;
   description: string;
-  estimatedManHours: number;
+  jobLength: string | null;
   locationLabel: string | null;
   status: TaskStatus;
   photos: { id: string; url: string }[];
@@ -72,7 +72,7 @@ export interface TaskInput {
   name: string;
   categoryId: string;
   description: string;
-  estimatedManHours: number;
+  jobLength: string;
   location: TaskLocationInput;
   notes?: string;
   isDraft?: boolean;

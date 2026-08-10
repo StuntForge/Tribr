@@ -295,7 +295,7 @@ router.get("/users/:id/tasks", async (req, res) => {
         name: task.name,
         category: { id: task.category.id, name: task.category.name },
         description: task.description,
-        estimatedManHours: task.estimatedManHours,
+        jobLength: task.jobLength,
         locationLabel: usingHome ? task.owner.locationLabel : task.locationLabel,
         status: task.status,
         photos: task.photos.map((p) => ({ id: p.id, url: p.url })),

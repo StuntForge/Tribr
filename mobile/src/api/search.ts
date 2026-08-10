@@ -14,12 +14,13 @@ export interface MemberSearchResult {
   workerRating: number | null;
   hostRating: number | null;
   completedCycles: number;
-  activeTasks: { id: string; name: string; category: string }[];
+  activeTasks: { id: string; name: string; category: string; jobLength: string | null }[];
 }
 
 export interface MemberSearchFilters {
   query?: string;
   categoryId?: string;
+  jobLength?: string;
   minRating?: number;
   maxDistanceMiles?: number;
   ageMin?: number;
@@ -33,6 +34,7 @@ export function searchMembers(filters: MemberSearchFilters) {
   const params = new URLSearchParams();
   if (filters.query) params.set("query", filters.query);
   if (filters.categoryId) params.set("categoryId", filters.categoryId);
+  if (filters.jobLength) params.set("jobLength", filters.jobLength);
   if (filters.minRating != null) params.set("minRating", String(filters.minRating));
   if (filters.maxDistanceMiles != null) params.set("maxDistanceMiles", String(filters.maxDistanceMiles));
   if (filters.ageMin != null) params.set("ageMin", String(filters.ageMin));

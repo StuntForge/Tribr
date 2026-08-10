@@ -98,7 +98,7 @@ export interface PublicTaskSummary {
   name: string;
   category: { id: string; name: string };
   description: string;
-  estimatedManHours: number;
+  jobLength: string | null;
   locationLabel: string | null;
   status: string;
   photos: { id: string; url: string }[];

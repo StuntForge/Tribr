@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,6 +35,14 @@ export default function GroupChatScreen({ route }: any) {
     queryFn: () => getMessages(groupId),
     refetchInterval: 5000,
   });
+
+  // Fetching this list marks it read server-side, but the Tribes tab badge
+  // reads a separate, 15s-polled query - without this it can sit there for
+  // up to 15s after the chat's already been seen. Refetching it here as
+  // soon as we know we're caught up makes it clear instantly instead.
+  useEffect(() => {
+    if (messages) queryClient.invalidateQueries({ queryKey: ["unread-messages"] });
+  }, [messages, queryClient]);
 
   const sendMutation = useMutation({
     mutationFn: ({ text, photoUrl }: { text?: string; photoUrl?: string }) => sendMessage(groupId, text, photoUrl),

@@ -371,6 +371,22 @@ router.post("/groups/:id/tasks/:taskId/availability-submit", async (req, res) =>
   const alreadyConfirmed = await prisma.workDay.findUnique({ where: { taskId: task.id } });
   if (alreadyConfirmed) return res.status(400).json({ error: "This work date is already confirmed." });
 
+  // Any date the member never explicitly responded to defaults to
+  // unavailable - the mobile app no longer forces a response per date, so
+  // this is what actually makes "not available" the real, counted default
+  // rather than just how it looks before you've touched anything.
+  const options = await prisma.dateOption.findMany({ where: { proposalId: proposal.id } });
+  const existingResponses = await prisma.availabilityResponse.findMany({
+    where: { userId: req.userId!, dateOptionId: { in: options.map((o) => o.id) } },
+  });
+  const respondedIds = new Set(existingResponses.map((r) => r.dateOptionId));
+  const missing = options.filter((o) => !respondedIds.has(o.id));
+  if (missing.length > 0) {
+    await prisma.availabilityResponse.createMany({
+      data: missing.map((o) => ({ dateOptionId: o.id, userId: req.userId!, available: false })),
+    });
+  }
+
   await prisma.proposalSubmission.upsert({
     where: { proposalId_userId: { proposalId: proposal.id, userId: req.userId! } },
     create: { proposalId: proposal.id, userId: req.userId! },

@@ -23,11 +23,13 @@ import { useAuth } from "../../context/AuthContext";
 import TaskSelectRow from "../../components/TaskSelectRow";
 import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
+import { useToast } from "../../components/Toast";
 import { colors, radii, spacing } from "../../theme";
 
 export default function GroupDetailScreen({ route, navigation }: any) {
   const { groupId } = route.params as { groupId: string };
   const { profile } = useAuth();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -51,7 +53,15 @@ export default function GroupDetailScreen({ route, navigation }: any) {
     });
   }
 
-  const applyMutation = useAction((taskId: string) => applyToGroup(groupId, taskId, message.trim() || undefined));
+  const applyMutation = useMutation({
+    mutationFn: (taskId: string) => applyToGroup(groupId, taskId, message.trim() || undefined),
+    onSuccess: () => {
+      invalidate();
+      toast.show("Application submitted");
+      navigation.navigate("GroupsHome");
+    },
+    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+  });
   const leaveMutation = useAction(() => leaveGroup(groupId));
   const disbandMutation = useAction(() => disbandGroup(groupId));
   const startWorkMutation = useAction(() => startWork(groupId));
@@ -61,6 +71,21 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const requestDissolutionMutation = useAction(() => requestDissolution(groupId));
   const ballotMutation = useAction((choice: "YES" | "NO") => castDissolutionBallot(groupId, group!.dissolutionVote!.id, choice));
   const removeMemberMutation = useAction((userId: string) => removeMember(groupId, userId));
+
+  // A single shared busy flag across every group action - each button
+  // dims and stops responding to taps the instant any one of them fires,
+  // instead of sitting there looking clickable for the ~1-2s round trip.
+  const busy =
+    applyMutation.isPending ||
+    leaveMutation.isPending ||
+    disbandMutation.isPending ||
+    startWorkMutation.isPending ||
+    deferMutation.isPending ||
+    forgoMutation.isPending ||
+    completeCycleMutation.isPending ||
+    requestDissolutionMutation.isPending ||
+    ballotMutation.isPending ||
+    removeMemberMutation.isPending;
 
   const { data: kickVotes } = useQuery({
     queryKey: ["group-kick-votes", groupId],
@@ -281,9 +306,11 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 <Text style={styles.memberName}>
                   {q.taskName} — {q.ownerName}
                 </Text>
-                <Text style={styles.memberTask}>{q.isActive ? "Active now" : q.status}</Text>
+                <Text style={styles.memberTask}>
+                  {q.isActive ? (q.workDayConfirmed ? "In progress - work day confirmed" : "Active now") : q.status}
+                </Text>
               </View>
-              {q.isActive && (
+              {q.isActive && !q.workDayConfirmed && (
                 <TouchableOpacity
                   style={styles.secondaryButtonSmall}
                   onPress={() => navigation.navigate("TaskSchedule", { groupId, taskId: q.taskId, taskName: q.taskName })}
@@ -308,12 +335,24 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               <Text style={styles.primaryButtonText}>Mark complete</Text>
             </TouchableOpacity>
             {group.queue.length > 1 && (
-              <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => deferMutation.mutate(myActiveQueueTask.taskId)}>
-                <Text style={styles.secondaryButtonText}>Defer</Text>
+              <TouchableOpacity
+                style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
+                onPress={() => deferMutation.mutate(myActiveQueueTask.taskId)}
+                disabled={busy}
+              >
+                {deferMutation.isPending ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.secondaryButtonText}>Defer</Text>}
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => forgoMutation.mutate(myActiveQueueTask.taskId)}>
-              <Text style={styles.secondaryButtonText}>Forgo this cycle</Text>
+            <TouchableOpacity
+              style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
+              onPress={() => forgoMutation.mutate(myActiveQueueTask.taskId)}
+              disabled={busy}
+            >
+              {forgoMutation.isPending ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Forgo this cycle</Text>
+              )}
             </TouchableOpacity>
           </View>
         </Section>
@@ -341,11 +380,11 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 placeholder="Optional message to the Tribe leader"
               />
               <TouchableOpacity
-                style={styles.primaryButtonSmall}
+                style={[styles.primaryButtonSmall, (!selectedTaskId || busy) && styles.buttonDisabled]}
                 onPress={() => selectedTaskId && applyMutation.mutate(selectedTaskId)}
-                disabled={!selectedTaskId}
+                disabled={!selectedTaskId || busy}
               >
-                <Text style={styles.primaryButtonText}>Apply</Text>
+                {applyMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Apply</Text>}
               </TouchableOpacity>
             </>
           )}
@@ -361,17 +400,29 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 Not voting counts as Yes.
               </Text>
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => ballotMutation.mutate("YES")}>
+                <TouchableOpacity
+                  style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
+                  onPress={() => ballotMutation.mutate("YES")}
+                  disabled={busy}
+                >
                   <Text style={styles.secondaryButtonText}>Vote Yes, dissolve</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => ballotMutation.mutate("NO")}>
+                <TouchableOpacity
+                  style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
+                  onPress={() => ballotMutation.mutate("NO")}
+                  disabled={busy}
+                >
                   <Text style={styles.secondaryButtonText}>Vote No, keep going</Text>
                 </TouchableOpacity>
               </View>
             </>
           ) : (
             (group.isMember || group.isLeader) && (
-              <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => requestDissolutionMutation.mutate(undefined as never)}>
+              <TouchableOpacity
+                style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
+                onPress={() => requestDissolutionMutation.mutate(undefined as never)}
+                disabled={busy}
+              >
                 <Text style={styles.secondaryButtonText}>Request dissolution</Text>
               </TouchableOpacity>
             )
@@ -386,13 +437,13 @@ export default function GroupDetailScreen({ route, navigation }: any) {
           {group.isLeader && ["RECRUITING", "READY"].includes(group.state) && (
             <>
               <TouchableOpacity
-                style={[styles.primaryButtonSmall, group.state !== "READY" && styles.buttonDisabled]}
+                style={[styles.primaryButtonSmall, (group.state !== "READY" || busy) && styles.buttonDisabled]}
                 onPress={() => startWorkMutation.mutate(undefined as never)}
-                disabled={group.state !== "READY"}
+                disabled={group.state !== "READY" || busy}
               >
-                <Text style={styles.primaryButtonText}>Start Work</Text>
+                {startWorkMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Start Work</Text>}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dangerButtonSmall} onPress={confirmDisband}>
+              <TouchableOpacity style={[styles.dangerButtonSmall, busy && styles.buttonDisabled]} onPress={confirmDisband} disabled={busy}>
                 <Text style={styles.dangerButtonText}>Disband</Text>
               </TouchableOpacity>
             </>
@@ -400,18 +451,23 @@ export default function GroupDetailScreen({ route, navigation }: any) {
           {group.isLeader && group.state === "COMPLETED" && (
             <>
               <TouchableOpacity
-                style={styles.primaryButtonSmall}
+                style={[styles.primaryButtonSmall, busy && styles.buttonDisabled]}
                 onPress={() => completeCycleMutation.mutate("START_NEW_CYCLE")}
+                disabled={busy}
               >
                 <Text style={styles.primaryButtonText}>Start new cycle</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dangerButtonSmall} onPress={() => completeCycleMutation.mutate("DISBAND")}>
+              <TouchableOpacity
+                style={[styles.dangerButtonSmall, busy && styles.buttonDisabled]}
+                onPress={() => completeCycleMutation.mutate("DISBAND")}
+                disabled={busy}
+              >
                 <Text style={styles.dangerButtonText}>End Tribe & disband</Text>
               </TouchableOpacity>
             </>
           )}
           {!group.isLeader && group.isMember && ["RECRUITING", "READY", "COMPLETED"].includes(group.state) && (
-            <TouchableOpacity style={styles.dangerButtonSmall} onPress={confirmLeave}>
+            <TouchableOpacity style={[styles.dangerButtonSmall, busy && styles.buttonDisabled]} onPress={confirmLeave} disabled={busy}>
               <Text style={styles.dangerButtonText}>Leave Tribe</Text>
             </TouchableOpacity>
           )}
@@ -498,7 +554,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    maxWidth: 150,
+    maxWidth: 240,
+    flexShrink: 1,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,

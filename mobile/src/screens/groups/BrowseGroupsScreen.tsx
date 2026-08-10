@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { browseGroups } from "../../api/groups";
@@ -14,6 +14,7 @@ import TribrLogo from "../../components/TribrLogo";
 import SegmentedTabs from "../../components/SegmentedTabs";
 import NearbyGroupsCarousel from "../../components/NearbyGroupsCarousel";
 import { colors, radii, shadows, spacing } from "../../theme";
+import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength } from "../../constants/jobLength";
 
 type SortKey = "distance" | "members";
 
@@ -43,7 +44,7 @@ function iconForCategory(name: string | null) {
   return (name && CATEGORY_ICONS[name]) || "people";
 }
 
-type FilterKey = "radius" | "size" | "category";
+type FilterKey = "radius" | "size" | "category" | "jobLength";
 
 export default function BrowseGroupsScreen({ navigation }: any) {
   const { profile } = useAuth();
@@ -52,6 +53,7 @@ export default function BrowseGroupsScreen({ navigation }: any) {
   const [categoryName, setCategoryName] = useState<string | null>(null);
   const [radius, setRadius] = useState<number | null>(null);
   const [sizeIndex, setSizeIndex] = useState(0);
+  const [jobLength, setJobLength] = useState<JobLength | null>(null);
   const [view, setView] = useState<"list" | "map">("list");
   const [expandedFilter, setExpandedFilter] = useState<FilterKey | null>(null);
   const [sort, setSort] = useState<SortKey>("distance");
@@ -60,13 +62,14 @@ export default function BrowseGroupsScreen({ navigation }: any) {
   const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories, enabled: isSubscriber });
   const sizeOption = SIZE_OPTIONS[sizeIndex];
   const { data: groups, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["browse-groups", categoryId, radius, sizeIndex],
+    queryKey: ["browse-groups", categoryId, radius, sizeIndex, jobLength],
     queryFn: () =>
       browseGroups({
         categoryId: categoryId ?? undefined,
         maxDistanceMiles: radius ?? undefined,
         sizeMin: sizeOption.sizeMin,
         sizeMax: sizeOption.sizeMax,
+        jobLength: jobLength ?? undefined,
       }),
   });
 
@@ -102,6 +105,12 @@ export default function BrowseGroupsScreen({ navigation }: any) {
         <View style={styles.filterBar}>
           <FilterPill label="Radius" value={radiusLabel} active={expandedFilter === "radius"} onPress={() => toggleFilter("radius")} />
           <FilterPill label="Size" value={SIZE_OPTIONS[sizeIndex].label} active={expandedFilter === "size"} onPress={() => toggleFilter("size")} />
+          <FilterPill
+            label="Job length"
+            value={jobLength ? JOB_LENGTH_LABELS[jobLength] : "Any"}
+            active={expandedFilter === "jobLength"}
+            onPress={() => toggleFilter("jobLength")}
+          />
           {isSubscriber && (
             <FilterPill label="Category" value={categoryName ?? "Any"} active={expandedFilter === "category"} onPress={() => toggleFilter("category")} />
           )}
@@ -143,6 +152,32 @@ export default function BrowseGroupsScreen({ navigation }: any) {
                   selected={sizeIndex === i}
                   onPress={() => {
                     setSizeIndex(i);
+                    setExpandedFilter(null);
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {expandedFilter === "jobLength" && (
+          <View style={styles.expandedPanel}>
+            <View style={styles.chipWrap}>
+              <FilterChip
+                label="Any"
+                selected={jobLength === null}
+                onPress={() => {
+                  setJobLength(null);
+                  setExpandedFilter(null);
+                }}
+              />
+              {JOB_LENGTHS.map((l) => (
+                <FilterChip
+                  key={l}
+                  label={JOB_LENGTH_LABELS[l]}
+                  selected={jobLength === l}
+                  onPress={() => {
+                    setJobLength(l);
                     setExpandedFilter(null);
                   }}
                 />
@@ -214,8 +249,15 @@ export default function BrowseGroupsScreen({ navigation }: any) {
             />
           </View>
           <View style={styles.stripWrap}>
-            <AnimatedPressable style={styles.stripHandle} onPress={() => setStripCollapsed((v) => !v)}>
-              <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+            <AnimatedPressable
+              style={styles.stripHandle}
+              onPress={() => setStripCollapsed((v) => !v)}
+              accessibilityLabel={stripCollapsed ? "Show nearby Tribes" : "Hide nearby Tribes"}
+            >
+              <View style={styles.stripHandleBar} />
+              <View style={styles.stripHandleButton}>
+                <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={20} color="#fff" />
+              </View>
             </AnimatedPressable>
             {!stripCollapsed && (
               <NearbyGroupsCarousel
@@ -243,9 +285,13 @@ export default function BrowseGroupsScreen({ navigation }: any) {
               style={[styles.card, !item.eligibleToApply && styles.cardIneligible]}
               onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}
             >
-              <View style={styles.cardIcon}>
-                <Ionicons name={iconForCategory(item.categories[0] ?? null)} size={22} color="#fff" />
-              </View>
+              {item.leaderTaskPhotoUrl ? (
+                <Image source={{ uri: item.leaderTaskPhotoUrl }} style={styles.cardPhoto} />
+              ) : (
+                <View style={styles.cardIcon}>
+                  <Ionicons name={iconForCategory(item.categories[0] ?? null)} size={22} color="#fff" />
+                </View>
+              )}
               <View style={{ flex: 1 }}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardTitle}>{item.name}</Text>
@@ -362,7 +408,17 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii.lg,
     ...shadows.raised,
   },
-  stripHandle: { alignItems: "center", paddingVertical: 6 },
+  stripHandle: { alignItems: "center", paddingVertical: 8, gap: 6 },
+  stripHandleBar: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border },
+  stripHandleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.card,
+  },
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
@@ -374,6 +430,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
     ...shadows.card,
+  },
+  cardPhoto: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceAlt,
   },
   cardIcon: {
     width: 44,

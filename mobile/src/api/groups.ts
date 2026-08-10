@@ -16,6 +16,7 @@ export interface GroupSummary {
   memberCount: number;
   leaderName: string | null;
   leaderIsPro: boolean;
+  leaderTaskPhotoUrl: string | null;
   averageMemberRating: number | null;
   state: GroupState;
   createdAt: string;
@@ -39,7 +40,7 @@ export interface GroupMemberInfo {
   isPro: boolean;
   joinedAt: string;
   rating: number | null;
-  currentTask: { id: string; name: string; status: string; category: string; estimatedManHours: number } | null;
+  currentTask: { id: string; name: string; status: string; category: string; jobLength: string | null } | null;
 }
 
 export interface QueueEntry {
@@ -49,6 +50,7 @@ export interface QueueEntry {
   ownerName: string | null;
   status: string;
   isActive: boolean;
+  workDayConfirmed: boolean;
 }
 
 export interface GroupDetail {
@@ -83,7 +85,7 @@ export interface GroupDetail {
 export interface PendingApplication {
   id: string;
   applicant: { id: string; firstName: string | null; isPro: boolean };
-  task: { id: string; name: string; category: string; estimatedManHours: number };
+  task: { id: string; name: string; category: string; jobLength: string | null };
   message: string | null;
   createdAt: string;
 }
@@ -113,6 +115,7 @@ export interface BrowseGroupsFilters {
   sizeMin?: number;
   sizeMax?: number;
   maxDistanceMiles?: number;
+  jobLength?: string;
 }
 
 export function browseGroups(filters: BrowseGroupsFilters = {}) {
@@ -122,6 +125,7 @@ export function browseGroups(filters: BrowseGroupsFilters = {}) {
   if (filters.sizeMin != null) params.set("sizeMin", String(filters.sizeMin));
   if (filters.sizeMax != null) params.set("sizeMax", String(filters.sizeMax));
   if (filters.maxDistanceMiles != null) params.set("maxDistanceMiles", String(filters.maxDistanceMiles));
+  if (filters.jobLength) params.set("jobLength", filters.jobLength);
   const qs = params.toString();
   return apiFetch<GroupSummary[]>(`/api/groups/browse${qs ? `?${qs}` : ""}`);
 }
@@ -134,6 +138,7 @@ export interface NearbyRecruitingGroup {
   approxDistanceMiles: number | null;
   memberCount: number;
   sizeMin: number;
+  sizeMax: number;
   members: { firstName: string | null; photoUrl: string | null }[];
 }
 
@@ -156,6 +161,7 @@ export interface CreateGroupInput {
   minRating?: number;
   preferredAgeMin?: number;
   preferredAgeMax?: number;
+  durationBand?: string;
 }
 
 export function createGroup(input: CreateGroupInput) {
@@ -356,7 +362,7 @@ export interface GroupCurrentTaskMember {
     name: string;
     description: string;
     category: string;
-    estimatedManHours: number;
+    jobLength: string | null;
     status: string;
     photos: { id: string; url: string }[];
   } | null;

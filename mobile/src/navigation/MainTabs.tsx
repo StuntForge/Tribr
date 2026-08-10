@@ -10,6 +10,7 @@ import ProfileStack from "./ProfileStack";
 import GroupsStack from "./GroupsStack";
 import TasksStack from "./TasksStack";
 import { useUnreadMessages } from "../hooks/useUnreadMessages";
+import { useActionItems } from "../hooks/useActionItems";
 import { colors, radii } from "../theme";
 
 const Tab = createBottomTabNavigator();
@@ -18,6 +19,8 @@ export default function MainTabs() {
   const insets = useSafeAreaInsets();
   const { data: unreadMessages } = useUnreadMessages();
   const unreadGroupCount = unreadMessages?.length ?? 0;
+  const { data: actionItems } = useActionItems();
+  const actionItemCount = actionItems?.length ?? 0;
 
   return (
     <Tab.Navigator
@@ -76,6 +79,11 @@ export default function MainTabs() {
               {route.name === "Groups" && unreadGroupCount > 0 && (
                 <View style={styles.tabBadge}>
                   <Text style={styles.tabBadgeText}>{unreadGroupCount > 9 ? "9+" : unreadGroupCount}</Text>
+                </View>
+              )}
+              {route.name === "Notifications" && actionItemCount > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{actionItemCount > 9 ? "9+" : actionItemCount}</Text>
                 </View>
               )}
             </View>

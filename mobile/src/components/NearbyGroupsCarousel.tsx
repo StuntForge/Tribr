@@ -44,7 +44,7 @@ export default function NearbyGroupsCarousel({ onSeeAll, onPressCard }: { onSeeA
                 )}
                 <View style={[styles.memberBadge, { backgroundColor: atMinimum ? colors.primary : colors.accent }]}>
                   <Text style={styles.memberBadgeText}>
-                    {item.memberCount}/{item.sizeMin}
+                    {item.memberCount}/{item.sizeMax}
                   </Text>
                 </View>
               </View>

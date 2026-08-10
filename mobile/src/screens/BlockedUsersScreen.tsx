@@ -59,13 +59,6 @@ export default function BlockedUsersScreen({ navigation }: any) {
                 <InfoCardRow icon="lock-closed" title="You're in control" body="You can unblock someone at any time if you change your mind." divider />
               </InfoCard>
             </View>
-            <AnimatedPressable
-              style={styles.findButton}
-              onPress={() => navigation.navigate("Groups", { screen: "SearchMembers" })}
-            >
-              <Ionicons name="person-add" size={16} color="#fff" />
-              <Text style={styles.findButtonText}>Find members to invite</Text>
-            </AnimatedPressable>
           </EmptyState>
         }
         renderItem={({ item }: { item: BlockedUser }) => (
@@ -100,18 +93,6 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: spacing.lg, flexGrow: 1 },
   infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
-  findButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    alignSelf: "stretch",
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-  },
-  findButtonText: { color: "#fff", fontWeight: "700" },
   card: {
     flexDirection: "row",
     alignItems: "center",

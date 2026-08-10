@@ -12,16 +12,15 @@ import AnimatedPressable from "../../components/AnimatedPressable";
 import FieldLabel from "../../components/FieldLabel";
 import IllustrationCard from "../../components/IllustrationCard";
 import { colors, radii, spacing } from "../../theme";
+import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength } from "../../constants/jobLength";
 
 const HEADER_IMAGE = require("../../../assets/illustrations/processed/create-group-header.png");
 
-const SIZE_PRESETS: { label: string; min: number; max: number }[] = [
-  { label: "3–4", min: 3, max: 4 },
-  { label: "4–6", min: 4, max: 6 },
-  { label: "6–8", min: 6, max: 8 },
-];
+const SIZE_MIN = 3;
+const SIZE_MAX = 6;
+const SIZE_OPTIONS = Array.from({ length: SIZE_MAX - SIZE_MIN + 1 }, (_, i) => SIZE_MIN + i);
 
-const RATING_OPTIONS = [null, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+const RATING_OPTIONS: (number | null)[] = [null, 2, 3, 4];
 const AGE_OPTIONS: (number | null)[] = [null, ...Array.from({ length: 99 - 18 + 1 }, (_, i) => 18 + i)];
 
 export default function CreateGroupScreen({ route, navigation }: any) {
@@ -34,12 +33,14 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
-  const [sizePreset, setSizePreset] = useState(SIZE_PRESETS[0]);
+  const [sizeMin, setSizeMin] = useState(SIZE_MIN);
+  const [sizeMax, setSizeMax] = useState(SIZE_MAX);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [ageMin, setAgeMin] = useState<number | null>(null);
   const [ageMax, setAgeMax] = useState<number | null>(null);
+  const [maxJobLength, setMaxJobLength] = useState<JobLength | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const toggleCategory = (id: string) => {
@@ -98,6 +99,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
     if (!description.trim()) return setError("Add a short description.");
     if (categoryIds.length === 0) return setError("Choose at least one allowed category.");
     if (!taskId) return setError("Choose one of your available tasks to represent you.");
+    if (sizeMin > sizeMax) return setError("Minimum Tribe size can't be greater than the maximum.");
     if (ageMin != null && ageMax != null && ageMin > ageMax) {
       return setError("Minimum age can't be greater than the maximum.");
     }
@@ -106,13 +108,14 @@ export default function CreateGroupScreen({ route, navigation }: any) {
       name: name.trim(),
       description: description.trim(),
       categoryIds,
-      sizeMin: sizePreset.min,
-      sizeMax: sizePreset.max,
+      sizeMin,
+      sizeMax,
       taskId,
       verifiedOnly,
       minRating: minRating ?? undefined,
       preferredAgeMin: ageMin ?? undefined,
       preferredAgeMax: ageMax ?? undefined,
+      durationBand: maxJobLength ?? undefined,
     });
   };
 
@@ -153,18 +156,11 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         </View>
 
         <FieldLabel icon="people-circle" label="Tribe size" />
-        <View style={styles.chipRow}>
-          {SIZE_PRESETS.map((preset) => (
-            <TouchableOpacity
-              key={preset.label}
-              style={[styles.chip, sizePreset.label === preset.label && styles.chipSelected]}
-              onPress={() => setSizePreset(preset)}
-            >
-              <Text style={[styles.chipText, sizePreset.label === preset.label && styles.chipTextSelected]}>
-                {preset.label} members
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <Text style={styles.hint}>Minimum {SIZE_MIN}, maximum {SIZE_MAX} members.</Text>
+        <View style={styles.ageRow}>
+          <NumberSelect label="Minimum" options={SIZE_OPTIONS} value={sizeMin} onChange={setSizeMin} />
+          <Text style={styles.ageSeparator}>–</Text>
+          <NumberSelect label="Maximum" options={SIZE_OPTIONS} value={sizeMax} onChange={setSizeMax} />
         </View>
 
         <View style={styles.switchRow}>
@@ -196,6 +192,22 @@ export default function CreateGroupScreen({ route, navigation }: any) {
           <AgeSelect label="Max age" value={ageMax} onChange={setAgeMax} />
         </View>
 
+        <FieldLabel icon="time" label="Maximum job length" />
+        <Text style={styles.hint}>Members can only join with a task up to this length.</Text>
+        <View style={styles.chipRow}>
+          {(["Any", ...JOB_LENGTHS] as const).map((l) => (
+            <TouchableOpacity
+              key={l}
+              style={[styles.chip, (l === "Any" ? maxJobLength == null : maxJobLength === l) && styles.chipSelected]}
+              onPress={() => setMaxJobLength(l === "Any" ? null : l)}
+            >
+              <Text style={[styles.chipText, (l === "Any" ? maxJobLength == null : maxJobLength === l) && styles.chipTextSelected]}>
+                {l === "Any" ? "Any" : JOB_LENGTH_LABELS[l]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <FieldLabel icon="clipboard" label="Your task for this Tribe" />
         {categoryIds.length === 0 ? (
           <Text style={styles.hint}>Choose at least one allowed category first.</Text>
@@ -218,6 +230,53 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
     </KeyboardAwareScrollView>
+  );
+}
+
+function NumberSelect({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: number[];
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TouchableOpacity style={styles.ageSelectButton} onPress={() => setOpen(true)}>
+        <Text style={styles.ageSelectText}>
+          {label}: {value}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.pickerTitle}>{label}</Text>
+            <FlatList
+              data={options}
+              keyExtractor={(n) => String(n)}
+              style={styles.pickerList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerRow}
+                  onPress={() => {
+                    onChange(item);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={[styles.pickerRowText, item === value && styles.pickerRowTextSelected]}>{item}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
   );
 }
 

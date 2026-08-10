@@ -9,7 +9,7 @@ import WaveHeader from "../../components/WaveHeader";
 import AnimatedPressable from "../../components/AnimatedPressable";
 import EmptyState from "../../components/EmptyState";
 import { InfoCard, InfoCardRow } from "../../components/InfoCard";
-import { colors, radii, spacing } from "../../theme";
+import { colors, spacing } from "../../theme";
 
 const EMPTY_IMAGE = require("../../../assets/illustrations/processed/favourites-empty-state.png");
 
@@ -56,13 +56,6 @@ export default function FavouritesScreen({ navigation }: any) {
                 <InfoCardRow icon="bulb" body="Tip: You can favourite members from their profile." divider />
               </InfoCard>
             </View>
-            <TouchableOpacity
-              style={styles.findButton}
-              onPress={() => navigation.navigate("Groups", { screen: "SearchMembers" })}
-            >
-              <Ionicons name="person-add" size={16} color="#fff" />
-              <Text style={styles.findButtonText}>Find members to invite</Text>
-            </TouchableOpacity>
           </EmptyState>
         }
         renderItem={({ item }) => (
@@ -104,18 +97,6 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: spacing.lg, flexGrow: 1 },
   infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
-  findButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    alignSelf: "stretch",
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-  },
-  findButtonText: { color: "#fff", fontWeight: "700" },
   card: {
     flexDirection: "row",
     alignItems: "center",

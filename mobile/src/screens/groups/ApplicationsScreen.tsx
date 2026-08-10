@@ -4,6 +4,7 @@ import { KeyboardAwareFlatList } from "react-native-keyboard-aware-scroll-view";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { decideApplication, Decision, getApplications, PendingApplication } from "../../api/groups";
+import { jobLengthLabelShort } from "../../constants/jobLength";
 import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
 import { colors, spacing } from "../../theme";
@@ -82,7 +83,7 @@ function ApplicationCard({
         <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
       </TouchableOpacity>
       <Text style={styles.taskLine}>
-        {application.task.name} · {application.task.category} · {application.task.estimatedManHours}h
+        {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
       </Text>
       {application.message && <Text style={styles.message}>"{application.message}"</Text>}
 

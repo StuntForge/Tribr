@@ -24,7 +24,11 @@ const INVITATIONS_ON_IMAGE = require("../../assets/illustrations/processed/invit
 const INVITATIONS_OFF_IMAGE = require("../../assets/illustrations/processed/invitations-off.png");
 const INVITATIONS_ON_ASPECT_RATIO = 1254 / 335;
 const INVITATIONS_OFF_ASPECT_RATIO = 1416 / 273;
-const INVITATIONS_IMAGE_WIDTH = 160;
+// The brief asked for double the old 160 width, but there isn't room for a
+// literal 2x (320) next to the avatar/name block on a real phone screen -
+// this is as large as it can go without pushing the greeting text into an
+// awkward wrap.
+const INVITATIONS_IMAGE_WIDTH = 240;
 const TOGGLE_FLIP_DELAY = 160;
 
 export default function HomeScreen({ navigation }: any) {
@@ -137,22 +141,34 @@ export default function HomeScreen({ navigation }: any) {
                 resizeMode="contain"
               />
             </AnimatedPressable>
-            <View style={styles.heroDivider} />
-            <AnimatedPressable style={styles.ratingBlock} onPress={() => setBreakdownOpen((v) => !v)}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.ratingLabel}>Your rating</Text>
-                <View style={styles.ratingValueRow}>
-                  <Ionicons name="star" size={15} color={colors.star} />
-                  <Text style={styles.ratingValueText}>
-                    {profile.overallRating != null ? profile.overallRating.toFixed(1) : "— No ratings yet"}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name={breakdownOpen ? "chevron-up" : "chevron-forward"} size={16} color="rgba(255,255,255,0.7)" />
-            </AnimatedPressable>
           </View>
         </MotiView>
       </WaveHeader>
+
+      <Reveal delay={nextDelay()}>
+        <AnimatedPressable style={styles.ratingHero} onPress={() => setBreakdownOpen((v) => !v)}>
+          <View style={styles.ratingHeroLeft}>
+            <Ionicons name="star" size={30} color={colors.star} />
+            <Text style={styles.ratingHeroValue}>{profile.overallRating != null ? profile.overallRating.toFixed(1) : "—"}</Text>
+          </View>
+          <View style={styles.ratingHeroDivider} />
+          <View style={styles.ratingHeroRight}>
+            <View style={styles.ratingBreakdownItem}>
+              <Ionicons name="hammer" size={13} color="#fff" />
+              <Text style={styles.ratingHeroBreakdownText}>
+                Worker {profile.workerRating != null ? profile.workerRating.toFixed(1) : "—"}
+              </Text>
+            </View>
+            <View style={styles.ratingBreakdownItem}>
+              <Ionicons name="home" size={13} color="#fff" />
+              <Text style={styles.ratingHeroBreakdownText}>
+                Host {profile.hostRating != null ? profile.hostRating.toFixed(1) : "—"}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name={breakdownOpen ? "chevron-up" : "chevron-forward"} size={18} color="rgba(255,255,255,0.85)" />
+        </AnimatedPressable>
+      </Reveal>
 
       {breakdownOpen && (
         <Reveal>
@@ -389,7 +405,7 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.lg },
   logoCenter: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   bellButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  heroRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
+  heroRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   heroLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
   avatarRing: {
     width: 80,
@@ -403,12 +419,24 @@ const styles = StyleSheet.create({
   greetingEyebrow: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "600" },
   greeting: { color: "#fff", fontSize: 21, fontWeight: "700", marginTop: 1 },
   meta: { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 },
-  heroRight: { alignItems: "flex-end", minWidth: INVITATIONS_IMAGE_WIDTH },
-  heroDivider: { height: 1, alignSelf: "stretch", backgroundColor: "rgba(255,255,255,0.18)", marginVertical: spacing.sm },
-  ratingBlock: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "stretch" },
-  ratingLabel: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "600" },
-  ratingValueRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  ratingValueText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  heroRight: { alignItems: "center", justifyContent: "center" },
+  ratingHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.raised,
+  },
+  ratingHeroLeft: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  ratingHeroValue: { color: "#fff", fontSize: 32, fontWeight: "800" },
+  ratingHeroDivider: { width: 1, alignSelf: "stretch", backgroundColor: "rgba(255,255,255,0.25)" },
+  ratingHeroRight: { flex: 1, gap: 4 },
+  ratingHeroBreakdownText: { color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: "600" },
   breakdownCard: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

@@ -58,25 +58,24 @@ export default function CreateProfileScreen() {
     }
   };
 
-  const canSubmit =
-    firstName.trim().length > 0 &&
-    age != null &&
-    gender &&
-    locationLabel.trim().length > 0 &&
-    bio.trim().length > 0 &&
-    photoUrl;
-
   const onSubmit = async () => {
     setError(null);
-    if (age == null) {
-      setError("Choose your age.");
+    const missing: string[] = [];
+    if (!photoUrl) missing.push("profile photo");
+    if (!firstName.trim()) missing.push("first name");
+    if (age == null) missing.push("age");
+    if (!gender) missing.push("gender");
+    if (!locationLabel.trim()) missing.push("postcode");
+    if (!bio.trim()) missing.push("biography");
+    if (missing.length > 0) {
+      setError(`Please fill in: ${missing.join(", ")}.`);
       return;
     }
     setSubmitting(true);
     try {
       await updateMe({
         firstName: firstName.trim(),
-        age,
+        age: age!,
         gender: gender!,
         locationLabel: locationLabel.trim(),
         locationLat,
@@ -158,11 +157,7 @@ export default function CreateProfileScreen() {
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <TouchableOpacity
-        style={[styles.button, !canSubmit && styles.buttonDisabled]}
-        onPress={onSubmit}
-        disabled={!canSubmit || submitting}
-      >
+      <TouchableOpacity style={[styles.button, submitting && styles.buttonDisabled]} onPress={onSubmit} disabled={submitting}>
         {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Finish profile</Text>}
       </TouchableOpacity>
     </KeyboardAwareScrollView>

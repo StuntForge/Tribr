@@ -122,7 +122,8 @@ model Task {
   categoryId         String
   category           JobCategory @relation(fields: [categoryId], references: [id])
   description        String
-  estimatedManHours  Float
+  estimatedManHours  Float    // unused going forward, kept in place; see jobLength
+  jobLength          String?  // FEW_HOURS | HALF_DAY | FULL_DAY
   locationType       String   // HOME | CHOOSE
   locationLabel      String?
   locationLat        Float?

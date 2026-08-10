@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { computeRatingSummary } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
+import { JOB_LENGTHS } from "./tasks";
 
 const router = Router();
 router.use(requireAuth);
@@ -22,6 +23,10 @@ router.get("/members/search", async (req, res) => {
 
   const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
   const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : undefined;
+  const jobLength =
+    typeof req.query.jobLength === "string" && (JOB_LENGTHS as readonly string[]).includes(req.query.jobLength)
+      ? req.query.jobLength
+      : undefined;
   const minRating = typeof req.query.minRating === "string" ? Number(req.query.minRating) : undefined;
   const maxDistanceMiles = typeof req.query.maxDistanceMiles === "string" ? Number(req.query.maxDistanceMiles) : undefined;
   const ageMin = typeof req.query.ageMin === "string" ? Number(req.query.ageMin) : undefined;
@@ -47,7 +52,9 @@ router.get("/members/search", async (req, res) => {
       status: "ACTIVE",
       lookingForGroup: true,
       ...(query ? { firstName: { contains: query } } : {}),
-      ...(categoryId ? { tasks: { some: { status: "AVAILABLE", categoryId } } } : {}),
+      ...(categoryId || jobLength
+        ? { tasks: { some: { status: "AVAILABLE", ...(categoryId ? { categoryId } : {}), ...(jobLength ? { jobLength } : {}) } } }
+        : {}),
       ...(Object.keys(ageFilter).length > 0 ? { age: ageFilter } : {}),
       ...(gender ? { gender } : {}),
       ...(hasPhoto ? { profilePhotoUrl: { not: null } } : {}),
@@ -84,7 +91,7 @@ router.get("/members/search", async (req, res) => {
         workerRating: ratings.workerRating,
         hostRating: ratings.hostRating,
         completedCycles: ratings.completedCycles,
-        activeTasks: c.tasks.map((t) => ({ id: t.id, name: t.name, category: t.category.name })),
+        activeTasks: c.tasks.map((t) => ({ id: t.id, name: t.name, category: t.category.name, jobLength: t.jobLength })),
       };
     })
   );

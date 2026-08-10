@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getPublicTask } from "../../api/tasks";
+import { jobLengthLabel } from "../../constants/jobLength";
 import { inviteMember } from "../../api/groups";
 import PhotoGallery from "../../components/PhotoGallery";
 import { colors, radii, shadows, spacing, type } from "../../theme";
@@ -61,8 +62,8 @@ export default function TaskDetailScreen({ route, navigation }: any) {
       <Text style={styles.label}>Description</Text>
       <Text style={styles.body}>{task.description}</Text>
 
-      <Text style={styles.label}>Estimated man hours</Text>
-      <Text style={styles.body}>{task.estimatedManHours}</Text>
+      <Text style={styles.label}>Job length</Text>
+      <Text style={styles.body}>{jobLengthLabel(task.jobLength)}</Text>
 
       {task.locationLabel && (
         <>

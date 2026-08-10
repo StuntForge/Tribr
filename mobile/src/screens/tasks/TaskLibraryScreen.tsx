@@ -5,6 +5,7 @@ import Animated, { LinearTransition, SlideOutRight } from "react-native-reanimat
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { deleteTask, getMyTasks, Task, TaskStatus } from "../../api/tasks";
+import { jobLengthLabel } from "../../constants/jobLength";
 import { useAuth } from "../../context/AuthContext";
 import WaveHeader from "../../components/WaveHeader";
 import TribrLogo from "../../components/TribrLogo";
@@ -230,7 +231,7 @@ function TaskCard({ task, onPress }: { task: Task; onPress: () => void }) {
         </View>
       </View>
       <Text style={styles.cardMeta}>
-        {task.category.name} · {task.estimatedManHours} man hours
+        {task.category.name} · {jobLengthLabel(task.jobLength)}
       </Text>
       {task.locationLabel && <Text style={styles.cardMeta}>{task.locationLabel}</Text>}
     </TouchableOpacity>
