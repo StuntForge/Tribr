@@ -12,6 +12,11 @@ import TutorialPager from "../components/TutorialPager";
 import { colors } from "../theme";
 import { navigationRef } from "./navigationRef";
 
+// These import expo-notifications, whose native module is only linked once
+// the fresh EAS build (app.json version bumped past what's currently
+// installed) actually ships - safe to wire in now specifically because the
+// version bump means this code only ever reaches that new binary, never an
+// existing OTA-updated install still on the old runtime version.
 export default function RootNavigator() {
   const { loading, isAuthenticated, profile } = useAuth();
   const { loading: tutorialLoading, seen: tutorialSeen, markSeen } = useTutorialSeen();
