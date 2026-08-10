@@ -16,6 +16,7 @@ import WaveHeader from "../components/WaveHeader";
 import TribrLogo from "../components/TribrLogo";
 import IconCircle from "../components/IconCircle";
 import IllustrationCard from "../components/IllustrationCard";
+import NearbyGroupsCarousel from "../components/NearbyGroupsCarousel";
 import { colors, radii, shadows, spacing, type } from "../theme";
 
 const NEXT_TASK_EMPTY_IMAGE = require("../../assets/illustrations/processed/home-next-task-empty-state.png");
@@ -72,6 +73,8 @@ export default function HomeScreen({ navigation }: any) {
       try {
         await setLookingForGroup(next);
         await refreshProfile();
+      } catch {
+        setLookingDisplay(!next);
       } finally {
         setToggling(false);
       }
@@ -340,6 +343,13 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         </Reveal>
       ) : null}
+
+      <Reveal delay={nextDelay()}>
+        <NearbyGroupsCarousel
+          onSeeAll={() => navigation.navigate("Groups", { screen: "BrowseGroups" })}
+          onPressCard={(groupId) => navigation.navigate("Groups", { screen: "GroupDetail", params: { groupId } })}
+        />
+      </Reveal>
     </ScrollView>
   );
 }

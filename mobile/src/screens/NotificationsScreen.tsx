@@ -233,8 +233,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
-  headerTitle: { color: "#fff", fontSize: 26, fontWeight: "800" },
-  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 14, marginTop: 4, maxWidth: "75%" },
+  headerTitle: { color: "#fff", fontSize: 26, fontWeight: "800", maxWidth: "65%" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 14, marginTop: 4, maxWidth: "65%" },
   headerIllustration: {
     width: 60,
     height: 60,

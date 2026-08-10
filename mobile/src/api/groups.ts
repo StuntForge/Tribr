@@ -126,6 +126,21 @@ export function browseGroups(filters: BrowseGroupsFilters = {}) {
   return apiFetch<GroupSummary[]>(`/api/groups/browse${qs ? `?${qs}` : ""}`);
 }
 
+export interface NearbyRecruitingGroup {
+  groupId: string;
+  taskId: string | null;
+  taskName: string;
+  taskPhotoUrl: string | null;
+  approxDistanceMiles: number | null;
+  memberCount: number;
+  sizeMin: number;
+  members: { firstName: string | null; photoUrl: string | null }[];
+}
+
+export function getNearbyRecruitingGroups() {
+  return apiFetch<NearbyRecruitingGroup[]>("/api/groups/nearby-recruiting");
+}
+
 export function getGroup(id: string) {
   return apiFetch<GroupDetail>(`/api/groups/${id}`);
 }

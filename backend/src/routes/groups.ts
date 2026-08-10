@@ -484,6 +484,65 @@ router.get("/groups/browse", async (req, res) => {
   res.json(filtered);
 });
 
+// "What's happening near you" - a random handful of nearby RECRUITING
+// groups (not ones already under way), shown as the leader's own task so
+// it reads as "here's a real job someone wants help with" rather than an
+// abstract group listing. Capped at 50 candidates before shuffling, same
+// bound as /groups/browse, so this stays fast regardless of how many
+// RECRUITING groups exist worldwide.
+router.get("/groups/nearby-recruiting", async (req, res) => {
+  const viewer = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+
+  const blockedPairs = await prisma.block.findMany({
+    where: { OR: [{ blockerId: req.userId }, { blockedId: req.userId }] },
+  });
+  const blockedUserIds = new Set(blockedPairs.flatMap((b) => [b.blockerId, b.blockedId]).filter((id) => id !== req.userId));
+
+  const groups = await prisma.group.findMany({
+    where: { state: "RECRUITING", leaderId: { notIn: [...blockedUserIds] } },
+    include: { members: { where: { status: "ACTIVE" }, include: { user: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  const withDistance = groups
+    .map((g) => {
+      let approxDistanceMiles: number | null = null;
+      if (viewer.locationLat != null && viewer.locationLng != null && g.locationLat != null && g.locationLng != null) {
+        approxDistanceMiles = Math.round(haversineMiles(viewer.locationLat, viewer.locationLng, g.locationLat, g.locationLng) * 10) / 10;
+      }
+      return { g, approxDistanceMiles };
+    })
+    .filter((x) => x.approxDistanceMiles == null || x.approxDistanceMiles <= 100);
+
+  for (let i = withDistance.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [withDistance[i], withDistance[j]] = [withDistance[j], withDistance[i]];
+  }
+  const picked = withDistance.slice(0, 6);
+
+  const results = await Promise.all(
+    picked.map(async ({ g, approxDistanceMiles }) => {
+      const leaderTask = await prisma.task.findFirst({
+        where: { groupId: g.id, ownerId: g.leaderId },
+        include: { photos: true },
+      });
+      return {
+        groupId: g.id,
+        taskId: leaderTask?.id ?? null,
+        taskName: leaderTask?.name ?? g.name,
+        taskPhotoUrl: leaderTask?.photos[0]?.url ?? null,
+        approxDistanceMiles,
+        memberCount: g.members.length,
+        sizeMin: g.sizeMin,
+        members: g.members.slice(0, 4).map((m) => ({ firstName: m.user.firstName, photoUrl: m.user.profilePhotoUrl })),
+      };
+    })
+  );
+
+  res.json(results);
+});
+
 router.get("/groups/:id", async (req, res) => {
   const group = await serializeGroupDetail(req.params.id, req.userId!);
   if (!group) return res.status(404).json({ error: "Group not found." });

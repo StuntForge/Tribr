@@ -263,8 +263,8 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   logoCenter: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  title: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, lineHeight: 18, maxWidth: "80%" },
+  title: { color: "#fff", fontSize: 24, fontWeight: "800", maxWidth: "58%" },
+  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, lineHeight: 18, maxWidth: "58%" },
   headerIllustration: {
     width: 64,
     height: 64,

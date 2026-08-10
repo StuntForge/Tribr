@@ -12,6 +12,7 @@ import SortSelect from "../../components/SortSelect";
 import WaveHeader from "../../components/WaveHeader";
 import TribrLogo from "../../components/TribrLogo";
 import SegmentedTabs from "../../components/SegmentedTabs";
+import NearbyGroupsCarousel from "../../components/NearbyGroupsCarousel";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 type SortKey = "distance" | "members";
@@ -212,43 +213,17 @@ export default function BrowseGroupsScreen({ navigation }: any) {
               onSelectMarker={(groupId) => navigation.navigate("GroupDetail", { groupId })}
             />
           </View>
-          {(sortedGroups?.length ?? 0) > 0 && (
-            <View style={styles.stripWrap}>
-              <AnimatedPressable style={styles.stripHandle} onPress={() => setStripCollapsed((v) => !v)}>
-                <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
-              </AnimatedPressable>
-              {!stripCollapsed && (
-                <FlatList
-                  data={sortedGroups}
-                  keyExtractor={(g) => g.id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.stripContent}
-                  renderItem={({ item }) => (
-                    <AnimatedPressable style={styles.stripCard} onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}>
-                      <View style={styles.stripCardIcon}>
-                        <Ionicons name={iconForCategory(item.categories[0] ?? null)} size={20} color="#fff" />
-                        <View style={[styles.stripCardBadge, !item.eligibleToApply && styles.stripCardBadgeMuted]}>
-                          <Text style={styles.stripCardBadgeText}>
-                            {item.memberCount}/{item.sizeMax}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.stripCardTitle} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <View style={styles.stripCardMetaRow}>
-                        <Ionicons name="location" size={11} color={colors.textMuted} />
-                        <Text style={styles.stripCardMeta}>
-                          {item.approxDistanceMiles != null ? `${item.approxDistanceMiles} miles away` : "Distance unknown"}
-                        </Text>
-                      </View>
-                    </AnimatedPressable>
-                  )}
-                />
-              )}
-            </View>
-          )}
+          <View style={styles.stripWrap}>
+            <AnimatedPressable style={styles.stripHandle} onPress={() => setStripCollapsed((v) => !v)}>
+              <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+            </AnimatedPressable>
+            {!stripCollapsed && (
+              <NearbyGroupsCarousel
+                onSeeAll={() => setView("list")}
+                onPressCard={(groupId) => navigation.navigate("GroupDetail", { groupId })}
+              />
+            )}
+          </View>
         </View>
       ) : (
         <FlatList
@@ -388,39 +363,6 @@ const styles = StyleSheet.create({
     ...shadows.raised,
   },
   stripHandle: { alignItems: "center", paddingVertical: 6 },
-  stripContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
-  stripCard: {
-    width: 140,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    padding: spacing.sm,
-    ...shadows.card,
-  },
-  stripCardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xs,
-  },
-  stripCardBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderWidth: 2,
-    borderColor: colors.surface,
-  },
-  stripCardBadgeMuted: { backgroundColor: colors.accent },
-  stripCardBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  stripCardTitle: { fontSize: 13, fontWeight: "700", color: colors.text },
-  stripCardMetaRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
-  stripCardMeta: { fontSize: 11, color: colors.textMuted },
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
   emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: spacing.sm, textAlign: "center" },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },

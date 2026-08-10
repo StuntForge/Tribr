@@ -20,7 +20,13 @@ export async function setToken(token: string | null) {
   }
 }
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -43,7 +49,7 @@ export async function apiFetch<T>(
   const data = isJson ? await res.json() : undefined;
 
   if (!res.ok) {
-    throw new ApiError(data?.error ?? "Something went wrong. Please try again.");
+    throw new ApiError(data?.error ?? "Something went wrong. Please try again.", res.status);
   }
   return data as T;
 }

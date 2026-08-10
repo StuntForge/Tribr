@@ -173,6 +173,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     if (!categoryId) return setError("Choose a job category."), null;
     if (!description.trim()) return setError("Add a short description."), null;
     if (locationType === "CHOOSE" && !locationLabel.trim()) return setError("Enter a location."), null;
+    if (photoCount < 1) return setError("Add at least one photo."), null;
 
     setError(null);
     return {
@@ -366,7 +367,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
         multiline
       />
 
-      <FieldLabel icon="camera" label={`Photos (${photoCount}/${MAX_PHOTOS})`} />
+      <FieldLabel icon="camera" label={`Photos (${photoCount}/${MAX_PHOTOS}) - at least 1 required`} />
       <Text style={styles.hint}>Long-press a photo to remove it.</Text>
       <View style={styles.photoRow}>
         {taskId
@@ -433,8 +434,8 @@ const styles = StyleSheet.create({
   form: { paddingHorizontal: spacing.lg },
   topRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  headerTitle: { color: "#fff", fontSize: 24, fontWeight: "800" },
-  headerSubtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, maxWidth: "75%", lineHeight: 18 },
+  headerTitle: { color: "#fff", fontSize: 24, fontWeight: "800", maxWidth: "60%" },
+  headerSubtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, maxWidth: "60%", lineHeight: 18 },
   headerIllustration: {
     width: 64,
     height: 64,

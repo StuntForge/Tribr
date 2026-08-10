@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { getToken, setToken as persistToken } from "../api/client";
+import { ApiError, getToken, setToken as persistToken } from "../api/client";
 import { getMe, Profile } from "../api/profile";
 
 interface AuthContextValue {
@@ -23,10 +23,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const me = await getMe();
       setProfile(me);
       setIsAuthenticated(true);
-    } catch {
-      setProfile(null);
-      setIsAuthenticated(false);
-      await persistToken(null);
+    } catch (err) {
+      // Only a real "your token is invalid" response should sign the user
+      // out. Anything else (a network blip, a slow/cold-starting backend)
+      // must leave the existing session alone - otherwise a single flaky
+      // request anywhere that calls this silently wipes the whole app.
+      if (err instanceof ApiError && err.status === 401) {
+        setProfile(null);
+        setIsAuthenticated(false);
+        await persistToken(null);
+      }
     }
   }, []);
 
