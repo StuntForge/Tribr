@@ -619,6 +619,9 @@ router.post("/groups", async (req, res) => {
   if (!input.categoryIds.includes(task.categoryId)) {
     return res.status(400).json({ error: "Your chosen task's category must be one of the group's allowed categories." });
   }
+  if (input.durationBand && task.jobLength && JOB_LENGTH_RANK[task.jobLength] > JOB_LENGTH_RANK[input.durationBand]) {
+    return res.status(400).json({ error: "Your chosen task is longer than this group's maximum job length." });
+  }
 
   const activeGroups = await activeMembershipCount(req.userId!);
   if (activeGroups >= groupLimitFor(owner.subscriptionTier)) {
@@ -942,6 +945,9 @@ router.post("/groups/:id/applications/:appId/respond-to-suggestion", async (req,
 
   const task = await prisma.task.findFirst({ where: { id: application.suggestedTaskId, ownerId: req.userId, status: "AVAILABLE" } });
   if (!task) return res.status(400).json({ error: "That task is no longer available." });
+  if (group.durationBand && task.jobLength && JOB_LENGTH_RANK[task.jobLength] > JOB_LENGTH_RANK[group.durationBand]) {
+    return res.status(400).json({ error: "This task is longer than this group's maximum job length." });
+  }
 
   await prisma.$transaction([
     prisma.task.update({ where: { id: task.id }, data: { status: "SUBMITTED", groupId: group.id, cycleId: cycle.id } }),
@@ -1154,6 +1160,9 @@ router.post("/invitations/:id/respond", async (req, res) => {
 
   const task = await prisma.task.findFirst({ where: { id: taskId, ownerId: req.userId, status: "AVAILABLE" } });
   if (!task) return res.status(400).json({ error: "That task isn't available." });
+  if (group.durationBand && task.jobLength && JOB_LENGTH_RANK[task.jobLength] > JOB_LENGTH_RANK[group.durationBand]) {
+    return res.status(400).json({ error: "This task is longer than this group's maximum job length." });
+  }
 
   const existingMember = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: req.userId! } } });
   if (!existingMember) {

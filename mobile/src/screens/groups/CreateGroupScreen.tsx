@@ -12,7 +12,7 @@ import AnimatedPressable from "../../components/AnimatedPressable";
 import FieldLabel from "../../components/FieldLabel";
 import IllustrationCard from "../../components/IllustrationCard";
 import { colors, radii, spacing } from "../../theme";
-import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength } from "../../constants/jobLength";
+import { JOB_LENGTHS, JOB_LENGTH_LABELS, JOB_LENGTH_RANK, JobLength } from "../../constants/jobLength";
 
 const HEADER_IMAGE = require("../../../assets/illustrations/processed/create-group-header.png");
 
@@ -48,7 +48,12 @@ export default function CreateGroupScreen({ route, navigation }: any) {
     setTaskId(null);
   };
 
-  const availableTasks = (tasks ?? []).filter((t) => t.status === "AVAILABLE" && categoryIds.includes(t.category.id));
+  const availableTasks = (tasks ?? []).filter(
+    (t) =>
+      t.status === "AVAILABLE" &&
+      categoryIds.includes(t.category.id) &&
+      (!maxJobLength || !t.jobLength || JOB_LENGTH_RANK[t.jobLength as JobLength] <= JOB_LENGTH_RANK[maxJobLength])
+  );
 
   const mutation = useMutation({
     mutationFn: createGroup,
@@ -199,7 +204,10 @@ export default function CreateGroupScreen({ route, navigation }: any) {
             <TouchableOpacity
               key={l}
               style={[styles.chip, (l === "Any" ? maxJobLength == null : maxJobLength === l) && styles.chipSelected]}
-              onPress={() => setMaxJobLength(l === "Any" ? null : l)}
+              onPress={() => {
+                setMaxJobLength(l === "Any" ? null : l);
+                setTaskId(null);
+              }}
             >
               <Text style={[styles.chipText, (l === "Any" ? maxJobLength == null : maxJobLength === l) && styles.chipTextSelected]}>
                 {l === "Any" ? "Any" : JOB_LENGTH_LABELS[l]}

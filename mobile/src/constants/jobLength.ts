@@ -2,6 +2,8 @@ export type JobLength = "FEW_HOURS" | "HALF_DAY" | "FULL_DAY";
 
 export const JOB_LENGTHS: JobLength[] = ["FEW_HOURS", "HALF_DAY", "FULL_DAY"];
 
+export const JOB_LENGTH_RANK: Record<JobLength, number> = { FEW_HOURS: 0, HALF_DAY: 1, FULL_DAY: 2 };
+
 export const JOB_LENGTH_LABELS: Record<JobLength, string> = {
   FEW_HOURS: "A few hours",
   HALF_DAY: "Half a day",
