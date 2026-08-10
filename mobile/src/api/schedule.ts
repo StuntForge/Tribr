@@ -63,9 +63,10 @@ export function respondAvailability(groupId: string, taskId: string, dateOptionI
   });
 }
 
-export function submitAvailability(groupId: string, taskId: string) {
+export function submitAvailability(groupId: string, taskId: string, availableDateOptionIds: string[]) {
   return apiFetch<{ ok: true; allSubmitted: boolean }>(`/api/groups/${groupId}/tasks/${taskId}/availability-submit`, {
     method: "POST",
+    body: { availableDateOptionIds },
   });
 }
 

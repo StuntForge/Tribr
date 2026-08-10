@@ -9,7 +9,6 @@ import {
   getSchedule,
   ProposeDateOption,
   proposeDates,
-  respondAvailability,
   reviseDates,
   ScheduleInfo,
   submitAvailability,
@@ -81,12 +80,10 @@ export default function TaskScheduleScreen({ route }: any) {
   // Only the dates marked available get posted - anything left off is
   // treated as unavailable automatically once submitted (see the submit
   // endpoint). That means tapping a date is a purely local, instant toggle
-  // with zero network calls; the only round trips happen once, on Submit.
+  // with zero network calls, and Submit sends the whole set in one request
+  // instead of one call per date.
   const submitMutation = useMutation({
-    mutationFn: async (availableDateOptionIds: string[]) => {
-      await Promise.all(availableDateOptionIds.map((id) => respondAvailability(groupId, taskId, id, true)));
-      await submitAvailability(groupId, taskId);
-    },
+    mutationFn: (availableDateOptionIds: string[]) => submitAvailability(groupId, taskId, availableDateOptionIds),
     onSuccess: invalidate,
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });

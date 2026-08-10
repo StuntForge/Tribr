@@ -355,11 +355,20 @@ router.post("/groups/:id/tasks/:taskId/availability-responses", async (req, res)
   res.json({ ok: true });
 });
 
+const submitSchema = z.object({ availableDateOptionIds: z.array(z.string()).optional().default([]) });
+
 // 5.4 - locks in the member's responses for this round and, once everyone
 // required has done the same, lets the task owner know it's their turn.
+// Takes the full set of dates the member marked available in one go (the
+// mobile app now collects taps locally and sends them here as a single
+// request instead of one network call per date - see PR notes on
+// server-trip reduction).
 router.post("/groups/:id/tasks/:taskId/availability-submit", async (req, res) => {
   const isMember = await requireGroupMember(req.params.id, req.userId!);
   if (!isMember) return res.status(403).json({ error: "Only group members can submit availability." });
+
+  const parsed = submitSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const task = await prisma.task.findFirst({ where: { id: req.params.taskId, groupId: req.params.id } });
   if (!task) return res.status(404).json({ error: "Task not found in this group." });
@@ -371,19 +380,22 @@ router.post("/groups/:id/tasks/:taskId/availability-submit", async (req, res) =>
   const alreadyConfirmed = await prisma.workDay.findUnique({ where: { taskId: task.id } });
   if (alreadyConfirmed) return res.status(400).json({ error: "This work date is already confirmed." });
 
-  // Any date the member never explicitly responded to defaults to
+  // Any date the member didn't include in availableDateOptionIds defaults to
   // unavailable - the mobile app no longer forces a response per date, so
   // this is what actually makes "not available" the real, counted default
-  // rather than just how it looks before you've touched anything.
+  // rather than just how it looks before you've touched anything. Checking
+  // against existing responses (rather than blindly creating) keeps this
+  // idempotent if submit is ever called twice.
+  const availableIds = new Set(parsed.data.availableDateOptionIds);
   const options = await prisma.dateOption.findMany({ where: { proposalId: proposal.id } });
   const existingResponses = await prisma.availabilityResponse.findMany({
     where: { userId: req.userId!, dateOptionId: { in: options.map((o) => o.id) } },
   });
   const respondedIds = new Set(existingResponses.map((r) => r.dateOptionId));
-  const missing = options.filter((o) => !respondedIds.has(o.id));
-  if (missing.length > 0) {
+  const toCreate = options.filter((o) => !respondedIds.has(o.id));
+  if (toCreate.length > 0) {
     await prisma.availabilityResponse.createMany({
-      data: missing.map((o) => ({ dateOptionId: o.id, userId: req.userId!, available: false })),
+      data: toCreate.map((o) => ({ dateOptionId: o.id, userId: req.userId!, available: availableIds.has(o.id) })),
     });
   }
 
