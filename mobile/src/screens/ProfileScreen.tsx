@@ -78,6 +78,12 @@ export default function ProfileScreen({ navigation }: any) {
       </Reveal>
 
       <Reveal delay={nextDelay()}>
+        <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("EditProfile")}>
+          <IconCircle icon="create" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
+          <Text style={styles.settingsRowText}>Edit profile</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </AnimatedPressable>
+
         <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("Favourites")}>
           <IconCircle icon="heart" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
           <Text style={styles.settingsRowText}>Favourites</Text>
@@ -90,9 +96,9 @@ export default function ProfileScreen({ navigation }: any) {
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </AnimatedPressable>
 
-        <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("AccountSettings")}>
-          <IconCircle icon="settings" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
-          <Text style={styles.settingsRowText}>Account settings</Text>
+        <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("Tutorial")}>
+          <IconCircle icon="book" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
+          <Text style={styles.settingsRowText}>Replay tutorial</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </AnimatedPressable>
 

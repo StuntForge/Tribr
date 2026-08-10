@@ -122,6 +122,12 @@ export default function EditProfileScreen({ navigation }: any) {
       <FieldLabel icon="person" label="First name" />
       <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="Alex" accessibilityLabel="First name" />
 
+      <FieldLabel icon="call" label="Mobile number" />
+      <View style={styles.lockedField}>
+        <Text style={styles.lockedFieldText}>{profile?.phone}</Text>
+      </View>
+      <Text style={styles.hint}>Your mobile number is your account's permanent identity and can't be changed.</Text>
+
       <FieldLabel icon="calendar" label="Age" />
       <View style={styles.lockedField}>
         <Text style={styles.lockedFieldText}>{profile?.age}</Text>
