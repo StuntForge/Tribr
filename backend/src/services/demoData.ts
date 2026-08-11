@@ -407,3 +407,45 @@ export async function deleteDemoData() {
     skippedGroups: entangledGroupIds.size,
   };
 }
+
+// Admin "delete this one account" action - same dependency-safe cascade as
+// deleteDemoData above (most of User's relations don't have a DB-level
+// cascade, so anything that references this user or their tasks has to be
+// cleared first or the final user delete fails on a foreign-key error).
+// Refuses to touch a group this user leads if it has other active members -
+// that would silently orphan someone else's group, which a one-off "remove
+// this account" click shouldn't be able to do.
+export async function deleteUserAccount(userId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) return { ok: false, error: "User not found." };
+
+  const ledGroups = await prisma.group.findMany({
+    where: { leaderId: userId },
+    select: { id: true, name: true, members: { where: { status: "ACTIVE" }, select: { userId: true } } },
+  });
+  const entangledGroup = ledGroups.find((g) => g.members.some((m) => m.userId !== userId));
+  if (entangledGroup) {
+    return {
+      ok: false,
+      error: `This user leads "${entangledGroup.name}", which has other active members - disband or reassign it before deleting this account.`,
+    };
+  }
+  const ledGroupIds = ledGroups.map((g) => g.id);
+
+  const tasks = await prisma.task.findMany({ where: { ownerId: userId }, select: { id: true } });
+  const taskIds = tasks.map((t) => t.id);
+
+  await prisma.$transaction([
+    prisma.ratingEvent.deleteMany({ where: { OR: [{ raterId: userId }, { rateeId: userId }] } }),
+    prisma.dissolutionBallot.deleteMany({ where: { userId } }),
+    prisma.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedUserId: userId }] } }),
+    prisma.groupChatMessage.deleteMany({ where: { senderId: userId } }),
+    prisma.groupApplication.deleteMany({ where: { OR: [{ applicantId: userId }, { taskId: { in: taskIds } }] } }),
+    prisma.groupInvitation.deleteMany({ where: { suggestedTaskId: { in: taskIds } } }),
+    prisma.task.deleteMany({ where: { id: { in: taskIds } } }),
+    prisma.group.deleteMany({ where: { id: { in: ledGroupIds } } }),
+    prisma.user.delete({ where: { id: userId } }),
+  ]);
+
+  return { ok: true };
+}

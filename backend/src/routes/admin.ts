@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAdminAuth, logAdminAction } from "../middleware/adminAuth";
 import { signAdminToken } from "../services/adminJwt";
-import { runFullSpectrumSeed, deleteDemoData } from "../services/demoData";
+import { runFullSpectrumSeed, deleteDemoData, deleteUserAccount } from "../services/demoData";
 import { sendPushToUsers } from "../services/push";
 
 const router = Router();
@@ -158,6 +158,21 @@ router.post("/users/:id/ban", async (req, res) => {
 router.post("/users/:id/reinstate", async (req, res) => {
   const user = await prisma.user.update({ where: { id: req.params.id }, data: { status: "ACTIVE" } });
   await logAdminAction(req.adminId!, "REINSTATE_USER", "User", user.id);
+  res.json({ ok: true });
+});
+
+// Permanently removes an account and everything it owns (tasks, group
+// membership, ratings, etc). Unlike suspend/ban this can't be undone, so it
+// logs the target's phone number in the audit trail since the user row
+// itself won't exist afterward to look up.
+router.delete("/users/:id", async (req, res) => {
+  const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { phone: true, firstName: true } });
+  if (!target) return res.status(404).json({ error: "User not found." });
+
+  const result = await deleteUserAccount(req.params.id);
+  if (!result.ok) return res.status(400).json({ error: result.error });
+
+  await logAdminAction(req.adminId!, "DELETE_USER", "User", req.params.id, `${target.firstName ?? "Unnamed"} (${target.phone})`);
   res.json({ ok: true });
 });
 

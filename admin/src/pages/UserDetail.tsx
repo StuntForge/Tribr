@@ -25,6 +25,9 @@ export default function UserDetail() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     apiFetch<UserDetailData>(`/api/admin/users/${id}`).then(setUser);
@@ -53,6 +56,18 @@ export default function UserDetail() {
       setError(e.message ?? "Something went wrong.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const deleteUser = async () => {
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/admin/users/${id}`, { method: "DELETE" });
+      navigate("/users");
+    } catch (e: any) {
+      setDeleteError(e.message ?? "Something went wrong.");
+      setDeleting(false);
     }
   };
 
@@ -117,6 +132,30 @@ export default function UserDetail() {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Danger zone</h3>
+        <p className="hint">
+          Permanently deletes this account and everything it owns (tasks, group membership, ratings, chat messages). This can't be
+          undone. Blocked if the account leads a group that has other active members — disband or reassign that group first.
+        </p>
+        {deleteError && <div className="error">{deleteError}</div>}
+        {!confirmingDelete ? (
+          <button className="btn danger" onClick={() => setConfirmingDelete(true)}>
+            Delete account
+          </button>
+        ) : (
+          <div className="toolbar">
+            <span className="hint">Permanently delete {user.firstName ?? "this user"}'s account?</span>
+            <button className="btn danger" disabled={deleting} onClick={deleteUser}>
+              {deleting ? "Deleting…" : "Confirm delete"}
+            </button>
+            <button className="btn secondary" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card">
