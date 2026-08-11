@@ -820,7 +820,12 @@ router.get("/groups/:id/applications", async (req, res) => {
   res.json(
     applications.map((a) => ({
       id: a.id,
-      applicant: { id: a.applicant.id, firstName: a.applicant.firstName, isPro: a.applicant.subscriptionTier === "SUBSCRIBER" },
+      applicant: {
+        id: a.applicant.id,
+        firstName: a.applicant.firstName,
+        photoUrl: a.applicant.profilePhotoUrl,
+        isPro: a.applicant.subscriptionTier === "SUBSCRIBER",
+      },
       task: { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength },
       message: a.message,
       createdAt: a.createdAt,

@@ -33,7 +33,11 @@ export default function MyInvitationsScreen({ navigation }: any) {
 
   const respondMutation = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) => respondToInvitation(id, accept),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => {
+      invalidate();
+      const groupId = invitations?.find((i) => i.id === variables.id)?.group.id;
+      if (variables.accept && groupId) navigation.navigate("GroupDetail", { groupId });
+    },
   });
 
   if (isLoading) {
@@ -69,6 +73,8 @@ export default function MyInvitationsScreen({ navigation }: any) {
         <InvitationCard
           invitation={item}
           busy={respondMutation.isPending}
+          pendingAccept={respondMutation.isPending && respondMutation.variables?.id === item.id && respondMutation.variables.accept}
+          pendingDecline={respondMutation.isPending && respondMutation.variables?.id === item.id && !respondMutation.variables.accept}
           onAccept={() => respondMutation.mutate({ id: item.id, accept: true })}
           onDecline={() => respondMutation.mutate({ id: item.id, accept: false })}
           onViewTasks={() => navigation.navigate("GroupCurrentTasks", { groupId: item.group.id, groupName: item.group.name })}
@@ -81,12 +87,16 @@ export default function MyInvitationsScreen({ navigation }: any) {
 function InvitationCard({
   invitation,
   busy,
+  pendingAccept,
+  pendingDecline,
   onAccept,
   onDecline,
   onViewTasks,
 }: {
   invitation: MyInvitation;
   busy: boolean;
+  pendingAccept: boolean;
+  pendingDecline: boolean;
   onAccept: () => void;
   onDecline: () => void;
   onViewTasks: () => void;
@@ -128,11 +138,11 @@ function InvitationCard({
       </TouchableOpacity>
 
       <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.primaryButton} onPress={onAccept} disabled={busy}>
-          <Text style={styles.primaryButtonText}>Accept</Text>
+        <TouchableOpacity style={[styles.primaryButton, busy && styles.buttonDisabled]} onPress={onAccept} disabled={busy}>
+          {pendingAccept ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Accept</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={onDecline} disabled={busy}>
-          <Text style={styles.secondaryButtonText}>Decline</Text>
+        <TouchableOpacity style={[styles.secondaryButton, busy && styles.buttonDisabled]} onPress={onDecline} disabled={busy}>
+          {pendingDecline ? <ActivityIndicator color={colors.danger} /> : <Text style={styles.secondaryButtonText}>Decline</Text>}
         </TouchableOpacity>
       </View>
     </View>
@@ -180,4 +190,5 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#fff", fontWeight: "600" },
   secondaryButton: { flex: 1, borderWidth: 1, borderColor: colors.danger, borderRadius: 10, padding: spacing.sm, alignItems: "center" },
   secondaryButtonText: { color: colors.danger, fontWeight: "600" },
+  buttonDisabled: { opacity: 0.5 },
 });

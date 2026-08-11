@@ -93,7 +93,7 @@ export interface GroupDetail {
 
 export interface PendingApplication {
   id: string;
-  applicant: { id: string; firstName: string | null; isPro: boolean };
+  applicant: { id: string; firstName: string | null; photoUrl: string | null; isPro: boolean };
   task: { id: string; name: string; category: string; jobLength: string | null };
   message: string | null;
   createdAt: string;

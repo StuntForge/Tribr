@@ -20,12 +20,19 @@ export default function ApplicationsScreen({ route, navigation }: any) {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["applications", groupId] });
     queryClient.invalidateQueries({ queryKey: ["group", groupId] });
+    queryClient.invalidateQueries({ queryKey: ["my-groups"] });
   };
 
   const decide = useMutation({
     mutationFn: ({ appId, decision, reason }: { appId: string; decision: Decision; reason?: string }) =>
       decideApplication(groupId, appId, decision, reason),
-    onSuccess: invalidate,
+    onSuccess: (_data, variables) => {
+      invalidate();
+      // Approving adds them to the Tribe - jump straight to it rather than
+      // leaving the leader looking at a list that no longer includes what
+      // they just acted on.
+      if (variables.decision === "APPROVE") navigation.navigate("GroupDetail", { groupId });
+    },
   });
 
   if (isLoading) {
@@ -53,8 +60,10 @@ export default function ApplicationsScreen({ route, navigation }: any) {
         <ApplicationCard
           application={item}
           busy={decide.isPending}
+          pendingDecision={decide.isPending && decide.variables?.appId === item.id ? decide.variables.decision : null}
           onDecide={(decision, reason) => decide.mutate({ appId: item.id, decision, reason })}
           onPressApplicant={() => navigation.navigate("PublicProfile", { userId: item.applicant.id })}
+          onPressTask={() => navigation.navigate("TaskDetail", { taskId: item.task.id })}
         />
       )}
     />
@@ -64,31 +73,37 @@ export default function ApplicationsScreen({ route, navigation }: any) {
 function ApplicationCard({
   application,
   busy,
+  pendingDecision,
   onDecide,
   onPressApplicant,
+  onPressTask,
 }: {
   application: PendingApplication;
   busy: boolean;
+  pendingDecision: Decision | null;
   onDecide: (decision: Decision, reason?: string) => void;
   onPressApplicant: () => void;
+  onPressTask: () => void;
 }) {
   const [reason, setReason] = useState("");
 
   return (
     <View style={styles.card}>
       <TouchableOpacity style={styles.identity} onPress={onPressApplicant}>
-        <Avatar name={application.applicant.firstName} photoUrl={null} size={32} />
+        <Avatar name={application.applicant.firstName} photoUrl={application.applicant.photoUrl} size={32} />
         <Text style={styles.name}>{application.applicant.firstName}</Text>
         {application.applicant.isPro && <ProBadge size="tiny" />}
         <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
       </TouchableOpacity>
-      <Text style={styles.taskLine}>
-        {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
-      </Text>
+      <TouchableOpacity onPress={onPressTask}>
+        <Text style={styles.taskLine}>
+          {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
+        </Text>
+      </TouchableOpacity>
       {application.message && <Text style={styles.message}>"{application.message}"</Text>}
 
-      <TouchableOpacity style={styles.approveButton} onPress={() => onDecide("APPROVE")} disabled={busy}>
-        <Text style={styles.approveButtonText}>Approve</Text>
+      <TouchableOpacity style={[styles.approveButton, busy && styles.buttonDisabled]} onPress={() => onDecide("APPROVE")} disabled={busy}>
+        {pendingDecision === "APPROVE" ? <ActivityIndicator color="#fff" /> : <Text style={styles.approveButtonText}>Approve</Text>}
       </TouchableOpacity>
 
       <TextInput
@@ -99,18 +114,22 @@ function ApplicationCard({
       />
       <View style={styles.row}>
         <TouchableOpacity
-          style={styles.rejectButton}
+          style={[styles.rejectButton, (busy || !reason.trim()) && styles.buttonDisabled]}
           onPress={() => reason.trim() && onDecide("REJECT", reason.trim())}
           disabled={busy || !reason.trim()}
         >
-          <Text style={styles.rejectButtonText}>Reject</Text>
+          {pendingDecision === "REJECT" ? <ActivityIndicator color={colors.danger} /> : <Text style={styles.rejectButtonText}>Reject</Text>}
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.requestButton}
+          style={[styles.requestButton, (busy || !reason.trim()) && styles.buttonDisabled]}
           onPress={() => reason.trim() && onDecide("REQUEST_TASK", reason.trim())}
           disabled={busy || !reason.trim()}
         >
-          <Text style={styles.requestButtonText}>Ask for a different task</Text>
+          {pendingDecision === "REQUEST_TASK" ? (
+            <ActivityIndicator color={colors.textMuted} />
+          ) : (
+            <Text style={styles.requestButtonText}>Ask for a different task</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -157,4 +176,5 @@ const styles = StyleSheet.create({
   rejectButtonText: { color: colors.danger, fontWeight: "600", fontSize: 12 },
   requestButton: { flex: 1, borderWidth: 1, borderColor: colors.textMuted, borderRadius: 8, padding: spacing.sm, alignItems: "center" },
   requestButtonText: { color: colors.textMuted, fontWeight: "600", fontSize: 12 },
+  buttonDisabled: { opacity: 0.5 },
 });
