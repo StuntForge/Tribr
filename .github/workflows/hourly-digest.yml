@@ -16,6 +16,10 @@ jobs:
     steps:
       - name: Trigger digest-tick
         run: |
+          if [ -z "${BACKEND_URL}" ] || [ -z "${DIGEST_SECRET}" ]; then
+            echo "::warning::BACKEND_URL and/or DIGEST_SECRET repo secrets aren't set - skipping (the daily digest feature is inactive until they're added, but this run won't be reported as a failure)."
+            exit 0
+          fi
           curl -sf -X POST "${BACKEND_URL}/api/internal/digest-tick" \
             -H "x-digest-secret: ${DIGEST_SECRET}"
         env:
