@@ -31,7 +31,15 @@ const SUBSCRIBER_GROUP_LIMIT = 6;
 
 export default function GroupsHomeScreen({ navigation }: any) {
   const { profile } = useAuth();
-  const { data: groups, isLoading, refetch, isRefetching } = useQuery({ queryKey: ["my-groups"], queryFn: getMyGroups });
+  // Polled (not just invalidated on local mutations) because membership can
+  // change from someone else's action - the leader approving your
+  // application on their own device, for instance - which nothing on this
+  // device would otherwise know to refetch for.
+  const { data: groups, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ["my-groups"],
+    queryFn: getMyGroups,
+    refetchInterval: 15000,
+  });
   const { data: invitations } = useQuery({ queryKey: ["my-invitations"], queryFn: getMyInvitations });
   const { data: unreadMessages } = useUnreadMessages();
   const unreadGroupIds = new Set(unreadMessages?.map((u) => u.groupId));

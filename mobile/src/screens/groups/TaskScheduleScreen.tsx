@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { Calendar } from "react-native-calendars";
+import { useFocusEffect } from "@react-navigation/native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ExpoCalendar from "expo-calendar";
 import {
@@ -70,10 +71,22 @@ export default function TaskScheduleScreen({ route }: any) {
   const [error, setError] = useState<string | null>(null);
   const [revising, setRevising] = useState(false);
 
-  const { data: schedule, isLoading } = useQuery({
+  const { data: schedule, isLoading, refetch } = useQuery({
     queryKey: ["schedule", groupId, taskId],
     queryFn: () => getSchedule(groupId, taskId),
   });
+
+  // Tapping a notification (e.g. "everyone's responded, pick a date") reuses
+  // an already-mounted instance of this screen if one's still sitting in the
+  // stack from an earlier visit, rather than mounting a fresh one - so a
+  // mount-only fetch can leave it showing whatever was cached from before
+  // the thing the notification is about actually happened. Refetching on
+  // every focus (not just first mount) closes that gap.
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["schedule", groupId, taskId] });
 

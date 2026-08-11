@@ -53,11 +53,12 @@ export default function GroupChatScreen({ route }: any) {
   });
 
   const onSend = () => {
-    if (!text.trim()) return;
+    if (!text.trim() || sendMutation.isPending) return;
     sendMutation.mutate({ text: text.trim() });
   };
 
   const onAddPhoto = async () => {
+    if (sendMutation.isPending) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
@@ -92,7 +93,13 @@ export default function GroupChatScreen({ route }: any) {
         renderItem={({ item }) => <MessageBubble message={item} isMine={item.senderId === profile?.id} />}
       />
       <View style={styles.inputRow}>
-        <TouchableOpacity style={styles.photoButton} onPress={onAddPhoto} accessibilityLabel="Attach a photo" accessibilityRole="button">
+        <TouchableOpacity
+          style={[styles.photoButton, sendMutation.isPending && styles.buttonDisabled]}
+          onPress={onAddPhoto}
+          disabled={sendMutation.isPending}
+          accessibilityLabel="Attach a photo"
+          accessibilityRole="button"
+        >
           <Text style={styles.photoButtonText}>📷</Text>
         </TouchableOpacity>
         <TextInput
@@ -102,8 +109,13 @@ export default function GroupChatScreen({ route }: any) {
           placeholder="Message the Tribe"
           accessibilityLabel="Message the Tribe"
         />
-        <TouchableOpacity style={styles.sendButton} onPress={onSend} disabled={!text.trim()} accessibilityRole="button">
-          <Text style={styles.sendButtonText}>Send</Text>
+        <TouchableOpacity
+          style={[styles.sendButton, (!text.trim() || sendMutation.isPending) && styles.buttonDisabled]}
+          onPress={onSend}
+          disabled={!text.trim() || sendMutation.isPending}
+          accessibilityRole="button"
+        >
+          {sendMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sendButtonText}>Send</Text>}
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -152,4 +164,5 @@ const styles = StyleSheet.create({
   input: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   sendButton: { backgroundColor: colors.primary, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   sendButtonText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  buttonDisabled: { opacity: 0.5 },
 });
