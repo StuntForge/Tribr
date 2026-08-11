@@ -178,11 +178,19 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               {group.memberCount}/{group.sizeMax} members · Cycle {group.currentCycleNumber}
               {group.averageMemberRating != null ? ` · ★ ${group.averageMemberRating.toFixed(1)}` : ""}
             </Text>
-            {(group.verifiedOnly || group.minRating != null) && (
+            {(group.verifiedOnly || group.minRating != null || group.preferredGender || group.preferredAgeMin != null || group.preferredAgeMax != null) && (
               <Text style={styles.requirementMeta}>
-                Requires: {group.verifiedOnly ? "Verified members" : ""}
-                {group.verifiedOnly && group.minRating != null ? " · " : ""}
-                {group.minRating != null ? `${group.minRating.toFixed(1)}★ minimum rating` : ""}
+                Requires:{" "}
+                {[
+                  group.verifiedOnly ? "Verified members" : null,
+                  group.minRating != null ? `${group.minRating.toFixed(1)}★ minimum rating` : null,
+                  group.preferredGender ? `${group.preferredGender} only` : null,
+                  group.preferredAgeMin != null || group.preferredAgeMax != null
+                    ? `Age ${group.preferredAgeMin ?? "Any"}-${group.preferredAgeMax ?? "Any"}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </Text>
             )}
           </View>

@@ -464,18 +464,23 @@ router.get("/groups/browse", async (req, res) => {
       ...(jobLength
         ? { OR: [{ durationBand: null }, { durationBand: { in: JOB_LENGTHS.filter((l) => JOB_LENGTH_RANK[l] >= JOB_LENGTH_RANK[jobLength]) } }] }
         : {}),
-      // A group's preferred age range is a hard visibility filter, not just
-      // an "ineligible but visible" gate like verifiedOnly/minRating - a
-      // group outside your age range shouldn't show up at all. Only applied
-      // when we actually know the viewer's age.
-      ...(viewer.age != null
-        ? {
-            AND: [
-              { OR: [{ preferredAgeMin: null }, { preferredAgeMin: { lte: viewer.age } }] },
-              { OR: [{ preferredAgeMax: null }, { preferredAgeMax: { gte: viewer.age } }] },
-            ],
-          }
-        : {}),
+      // A group's preferred age range/gender are hard visibility filters, not
+      // just an "ineligible but visible" gate like verifiedOnly/minRating - a
+      // group you don't qualify for shouldn't show up at all. Built into one
+      // AND array (rather than separate spread keys) since the jobLength
+      // filter above already claims the "OR" key at this level - a second
+      // top-level "OR" would silently overwrite it.
+      ...(() => {
+        const hardFilters: object[] = [];
+        if (viewer.age != null) {
+          hardFilters.push({ OR: [{ preferredAgeMin: null }, { preferredAgeMin: { lte: viewer.age } }] });
+          hardFilters.push({ OR: [{ preferredAgeMax: null }, { preferredAgeMax: { gte: viewer.age } }] });
+        }
+        if (viewer.gender != null) {
+          hardFilters.push({ OR: [{ preferredGender: null }, { preferredGender: viewer.gender }] });
+        }
+        return hardFilters.length > 0 ? { AND: hardFilters } : {};
+      })(),
     },
     include: {
       allowedCategories: { include: { category: true } },
@@ -775,6 +780,9 @@ router.post("/groups/:id/apply", async (req, res) => {
     if (applicant.age == null || (group.preferredAgeMin != null && applicant.age < group.preferredAgeMin) || (group.preferredAgeMax != null && applicant.age > group.preferredAgeMax)) {
       return res.status(403).json({ error: "You're outside this group's preferred age range." });
     }
+  }
+  if (group.preferredGender != null && applicant.gender !== group.preferredGender) {
+    return res.status(403).json({ error: `This group is limited to ${group.preferredGender} members.` });
   }
 
   const parsed = applySchema.safeParse(req.body);

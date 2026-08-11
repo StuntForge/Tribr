@@ -173,6 +173,7 @@ export interface CreateGroupInput {
   minRating?: number;
   preferredAgeMin?: number;
   preferredAgeMax?: number;
+  preferredGender?: string;
   durationBand?: string;
 }
 

@@ -21,6 +21,7 @@ const SIZE_MAX = 6;
 const SIZE_OPTIONS = Array.from({ length: SIZE_MAX - SIZE_MIN + 1 }, (_, i) => SIZE_MIN + i);
 
 const RATING_OPTIONS: (number | null)[] = [null, 2, 3, 4];
+const GENDER_OPTIONS: (string | null)[] = [null, "Male", "Female"];
 const AGE_OPTIONS: (number | null)[] = [null, ...Array.from({ length: 99 - 18 + 1 }, (_, i) => 18 + i)];
 
 export default function CreateGroupScreen({ route, navigation }: any) {
@@ -38,6 +39,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minRating, setMinRating] = useState<number | null>(null);
+  const [preferredGender, setPreferredGender] = useState<string | null>(null);
   const [ageMin, setAgeMin] = useState<number | null>(null);
   const [ageMax, setAgeMax] = useState<number | null>(null);
   const [maxJobLength, setMaxJobLength] = useState<JobLength | null>(null);
@@ -118,6 +120,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
       taskId,
       verifiedOnly,
       minRating: minRating ?? undefined,
+      preferredGender: preferredGender ?? undefined,
       preferredAgeMin: ageMin ?? undefined,
       preferredAgeMax: ageMax ?? undefined,
       durationBand: maxJobLength ?? undefined,
@@ -185,6 +188,20 @@ export default function CreateGroupScreen({ route, navigation }: any) {
               onPress={() => setMinRating(r)}
             >
               <Text style={[styles.chipText, minRating === r && styles.chipTextSelected]}>{r == null ? "Any" : `${r.toFixed(1)}★`}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <FieldLabel icon="male-female" label="Preferred gender" />
+        <Text style={styles.hint}>Only people matching this will see or be able to join this Tribe.</Text>
+        <View style={styles.chipRow}>
+          {GENDER_OPTIONS.map((g) => (
+            <TouchableOpacity
+              key={g ?? "any"}
+              style={[styles.chip, preferredGender === g && styles.chipSelected]}
+              onPress={() => setPreferredGender(g)}
+            >
+              <Text style={[styles.chipText, preferredGender === g && styles.chipTextSelected]}>{g ?? "Any"}</Text>
             </TouchableOpacity>
           ))}
         </View>
