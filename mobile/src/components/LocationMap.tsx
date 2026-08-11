@@ -69,7 +69,10 @@ function buildMapHtml(center: { lat: number; lng: number }, markers: MapMarker[]
         iconAnchor: [4, 24],
       });
       const marker = L.marker([m.lat, m.lng], { icon }).addTo(map);
-      marker.bindPopup('<b>' + escapeHtml(m.title) + '</b><br>' + escapeHtml(m.snippet) + '<br><a href="#" onclick="select(\\'' + m.id + '\\')">View</a>');
+      // A native card (with the group's real category image, which a
+      // Leaflet HTML popup can't render reliably) replaces the old
+      // text-only Leaflet popup - tapping the flag selects it directly.
+      marker.on('click', function() { select(m.id); });
       bounds.push([m.lat, m.lng]);
     });
     // Frame every marker (not a fixed zoom around the viewer) so results far

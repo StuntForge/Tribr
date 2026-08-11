@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getMyGroups, getMyInvitations, GroupState } from "../../api/groups";
@@ -11,6 +11,7 @@ import AnimatedPressable from "../../components/AnimatedPressable";
 import EmptyState from "../../components/EmptyState";
 import IllustrationCard from "../../components/IllustrationCard";
 import { InfoCard, InfoCardRow } from "../../components/InfoCard";
+import { categoryThumbnail } from "../../constants/categoryThumbnails";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 const GROUPS_EMPTY_IMAGE = require("../../../assets/illustrations/processed/groups-empty-state.png");
@@ -134,24 +135,36 @@ export default function GroupsHomeScreen({ navigation }: any) {
               </View>
             </EmptyState>
           }
-          renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}>
-              <View style={styles.cardTitleRow}>
-                <Text style={styles.cardTitle}>
-                  {item.name} {item.isLeader ? "👑" : ""}
-                </Text>
-                {unreadGroupIds.has(item.id) && (
-                  <View style={styles.unreadPill}>
-                    <Ionicons name="chatbubble" size={11} color="#fff" />
-                    <Text style={styles.unreadPillText}>New</Text>
+          renderItem={({ item }) => {
+            const thumbnail = categoryThumbnail(item.leaderTaskCategory);
+            return (
+              <TouchableOpacity style={styles.card} onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}>
+                {thumbnail ? (
+                  <Image source={thumbnail} style={styles.cardThumbnail} />
+                ) : (
+                  <View style={[styles.cardThumbnail, styles.cardThumbnailFallback]}>
+                    <Ionicons name="people" size={20} color={colors.primary} />
                   </View>
                 )}
-              </View>
-              <Text style={styles.cardMeta}>
-                {STATE_LABEL[item.state]} · Cycle {item.currentCycleNumber}
-              </Text>
-            </TouchableOpacity>
-          )}
+                <View style={{ flex: 1 }}>
+                  <View style={styles.cardTitleRow}>
+                    <Text style={styles.cardTitle}>
+                      {item.name} {item.isLeader ? "👑" : ""}
+                    </Text>
+                    {unreadGroupIds.has(item.id) && (
+                      <View style={styles.unreadPill}>
+                        <Ionicons name="chatbubble" size={11} color="#fff" />
+                        <Text style={styles.unreadPillText}>New</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.cardMeta}>
+                    {STATE_LABEL[item.state]} · Cycle {item.currentCycleNumber}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </View>
@@ -241,6 +254,9 @@ const styles = StyleSheet.create({
   infoCardWrap: { alignSelf: "stretch", marginTop: spacing.md },
   betterTogetherRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
@@ -248,6 +264,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
+  cardThumbnail: { width: 48, height: 48, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
+  cardThumbnailFallback: { alignItems: "center", justifyContent: "center" },
   cardTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   cardTitle: { fontSize: 15, fontWeight: "600", color: colors.text, flex: 1 },
   unreadPill: {

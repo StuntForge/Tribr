@@ -17,6 +17,7 @@ export interface GroupSummary {
   leaderName: string | null;
   leaderIsPro: boolean;
   leaderTaskPhotoUrl: string | null;
+  leaderTaskCategory: string | null;
   averageMemberRating: number | null;
   state: GroupState;
   createdAt: string;
@@ -31,6 +32,7 @@ export interface MyGroupSummary {
   state: GroupState;
   currentCycleNumber: number;
   isLeader: boolean;
+  leaderTaskCategory: string | null;
 }
 
 export interface GroupMemberInfo {

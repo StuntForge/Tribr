@@ -387,13 +387,21 @@ router.get("/groups/mine", async (req, res) => {
     .filter((g) => g.state !== "DISBANDED")
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 
+  // The Tribe's icon is keyed off the leader's own task category (a Tribe
+  // can allow several categories, which is ambiguous - the leader's task
+  // never is).
+  const leaderTasks = await Promise.all(
+    groups.map((g) => prisma.task.findFirst({ where: { groupId: g.id, ownerId: g.leaderId }, include: { category: true } }))
+  );
+
   res.json(
-    groups.map((g) => ({
+    groups.map((g, i) => ({
       id: g.id,
       name: g.name,
       state: g.state,
       currentCycleNumber: g.currentCycleNumber,
       isLeader: g.leaderId === req.userId,
+      leaderTaskCategory: leaderTasks[i]?.category.name ?? null,
     }))
   );
 });
@@ -496,7 +504,7 @@ router.get("/groups/browse", async (req, res) => {
 
       const leaderTask = await prisma.task.findFirst({
         where: { groupId: g.id, ownerId: g.leaderId },
-        include: { photos: true },
+        include: { photos: true, category: true },
       });
 
       return {
@@ -514,6 +522,7 @@ router.get("/groups/browse", async (req, res) => {
         leaderName: g.leader.firstName,
         leaderIsPro: g.leader.subscriptionTier === "SUBSCRIBER",
         leaderTaskPhotoUrl: leaderTask?.photos[0]?.url ?? null,
+        leaderTaskCategory: leaderTask?.category.name ?? null,
         averageMemberRating,
         state: g.state,
         createdAt: g.createdAt,

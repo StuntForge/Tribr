@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { browseGroups } from "../../api/groups";
+import { browseGroups, GroupSummary } from "../../api/groups";
 import { getJobCategories } from "../../api/tasks";
 import { useAuth } from "../../context/AuthContext";
 import AnimatedPressable from "../../components/AnimatedPressable";
@@ -15,6 +15,7 @@ import SegmentedTabs from "../../components/SegmentedTabs";
 import NearbyGroupsCarousel from "../../components/NearbyGroupsCarousel";
 import { colors, radii, shadows, spacing } from "../../theme";
 import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength } from "../../constants/jobLength";
+import { categoryThumbnail } from "../../constants/categoryThumbnails";
 
 type SortKey = "distance" | "members";
 
@@ -33,17 +34,6 @@ const SIZE_OPTIONS: { label: string; sizeMin?: number; sizeMax?: number }[] = [
   { label: "6+", sizeMin: 6 },
 ];
 
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Gardening: "leaf",
-  "Moving & Lifting": "cube",
-  "DIY & General": "hammer",
-  Decorating: "color-palette",
-};
-
-function iconForCategory(name: string | null) {
-  return (name && CATEGORY_ICONS[name]) || "people";
-}
-
 type FilterKey = "radius" | "size" | "category" | "jobLength";
 
 export default function BrowseGroupsScreen({ navigation }: any) {
@@ -58,6 +48,7 @@ export default function BrowseGroupsScreen({ navigation }: any) {
   const [expandedFilter, setExpandedFilter] = useState<FilterKey | null>(null);
   const [sort, setSort] = useState<SortKey>("distance");
   const [stripCollapsed, setStripCollapsed] = useState(false);
+  const [selectedMarkerGroupId, setSelectedMarkerGroupId] = useState<string | null>(null);
 
   const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories, enabled: isSubscriber });
   const sizeOption = SIZE_OPTIONS[sizeIndex];
@@ -245,8 +236,18 @@ export default function BrowseGroupsScreen({ navigation }: any) {
                   ? { lat: profile.locationLat, lng: profile.locationLng }
                   : { lat: 53.1699, lng: -0.1699 }
               }
-              onSelectMarker={(groupId) => navigation.navigate("GroupDetail", { groupId })}
+              onSelectMarker={(groupId) => setSelectedMarkerGroupId(groupId)}
             />
+            {selectedMarkerGroupId && (
+              <MarkerPreviewCard
+                group={groups?.find((g) => g.id === selectedMarkerGroupId) ?? null}
+                onClose={() => setSelectedMarkerGroupId(null)}
+                onView={() => {
+                  navigation.navigate("GroupDetail", { groupId: selectedMarkerGroupId });
+                  setSelectedMarkerGroupId(null);
+                }}
+              />
+            )}
           </View>
           <View style={styles.stripWrap}>
             <AnimatedPressable
@@ -285,11 +286,11 @@ export default function BrowseGroupsScreen({ navigation }: any) {
               style={[styles.card, !item.eligibleToApply && styles.cardIneligible]}
               onPress={() => navigation.navigate("GroupDetail", { groupId: item.id })}
             >
-              {item.leaderTaskPhotoUrl ? (
-                <Image source={{ uri: item.leaderTaskPhotoUrl }} style={styles.cardPhoto} />
+              {categoryThumbnail(item.leaderTaskCategory) ? (
+                <Image source={categoryThumbnail(item.leaderTaskCategory)} style={styles.cardPhoto} />
               ) : (
                 <View style={styles.cardIcon}>
-                  <Ionicons name={iconForCategory(item.categories[0] ?? null)} size={22} color="#fff" />
+                  <Ionicons name="people" size={30} color="#fff" />
                 </View>
               )}
               <View style={{ flex: 1 }}>
@@ -341,6 +342,45 @@ export default function BrowseGroupsScreen({ navigation }: any) {
           )}
         />
       )}
+    </View>
+  );
+}
+
+function MarkerPreviewCard({
+  group,
+  onClose,
+  onView,
+}: {
+  group: GroupSummary | null | undefined;
+  onClose: () => void;
+  onView: () => void;
+}) {
+  if (!group) return null;
+  const thumbnail = categoryThumbnail(group.leaderTaskCategory);
+  return (
+    <View style={styles.markerCard}>
+      {thumbnail ? (
+        <Image source={thumbnail} style={styles.markerCardPhoto} />
+      ) : (
+        <View style={[styles.markerCardPhoto, styles.markerCardPhotoFallback]}>
+          <Ionicons name="people" size={22} color="#fff" />
+        </View>
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={styles.markerCardTitle} numberOfLines={1}>
+          {group.name}
+        </Text>
+        <Text style={styles.markerCardMeta}>
+          {group.memberCount}/{group.sizeMax} members · led by {group.leaderName}
+          {group.approxDistanceMiles != null ? ` · ${group.approxDistanceMiles} mi` : ""}
+        </Text>
+        <AnimatedPressable style={styles.markerCardButton} onPress={onView}>
+          <Text style={styles.markerCardButtonText}>View Tribe</Text>
+        </AnimatedPressable>
+      </View>
+      <AnimatedPressable onPress={onClose}>
+        <Ionicons name="close" size={18} color={colors.textMuted} />
+      </AnimatedPressable>
     </View>
   );
 }
@@ -402,6 +442,32 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontSize: 12 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, flexGrow: 1 },
+  markerCard: {
+    position: "absolute",
+    top: spacing.md,
+    left: spacing.md,
+    right: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    ...shadows.raised,
+  },
+  markerCardPhoto: { width: 56, height: 56, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
+  markerCardPhotoFallback: { backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  markerCardTitle: { fontSize: 14, fontWeight: "700", color: colors.text },
+  markerCardMeta: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  markerCardButton: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    marginTop: spacing.xs,
+  },
+  markerCardButtonText: { color: "#fff", fontSize: 12, fontWeight: "700" },
   stripWrap: {
     backgroundColor: colors.background,
     borderTopLeftRadius: radii.lg,
@@ -424,6 +490,7 @@ const styles = StyleSheet.create({
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
   card: {
     flexDirection: "row",
+    alignItems: "center",
     gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -432,15 +499,15 @@ const styles = StyleSheet.create({
     ...shadows.card,
   },
   cardPhoto: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 88,
+    height: 88,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceAlt,
   },
   cardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 88,
+    height: 88,
+    borderRadius: radii.lg,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",

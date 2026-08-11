@@ -24,12 +24,6 @@ const INVITATIONS_ON_IMAGE = require("../../assets/illustrations/processed/invit
 const INVITATIONS_OFF_IMAGE = require("../../assets/illustrations/processed/invitations-off.png");
 const INVITATIONS_ON_ASPECT_RATIO = 1254 / 335;
 const INVITATIONS_OFF_ASPECT_RATIO = 1416 / 273;
-// The brief asked for double the old 160 width, but there isn't room for a
-// literal 2x (320) next to the avatar/name block on a real phone screen -
-// this is as large as it can go without pushing the greeting text into an
-// awkward wrap.
-const INVITATIONS_IMAGE_WIDTH = 240;
-const TOGGLE_FLIP_DELAY = 160;
 
 export default function HomeScreen({ navigation }: any) {
   const { profile, refreshProfile } = useAuth();
@@ -68,21 +62,19 @@ export default function HomeScreen({ navigation }: any) {
     enabled: Boolean(nextWorkDay),
   });
 
-  const onToggleLooking = () => {
+  const onToggleLooking = async () => {
     if (toggling || !profile) return;
     const next = !profile.lookingForGroup;
+    setLookingDisplay(next);
     setToggling(true);
-    setTimeout(async () => {
-      setLookingDisplay(next);
-      try {
-        await setLookingForGroup(next);
-        await refreshProfile();
-      } catch {
-        setLookingDisplay(!next);
-      } finally {
-        setToggling(false);
-      }
-    }, TOGGLE_FLIP_DELAY);
+    try {
+      await setLookingForGroup(next);
+      await refreshProfile();
+    } catch {
+      setLookingDisplay(!next);
+    } finally {
+      setToggling(false);
+    }
   };
 
   if (!profile) return null;
@@ -129,21 +121,18 @@ export default function HomeScreen({ navigation }: any) {
               </Text>
             </View>
           </View>
-
-          <View style={styles.heroRight}>
-            <AnimatedPressable onPress={onToggleLooking} disabled={toggling}>
-              <Image
-                source={lookingDisplay ? INVITATIONS_ON_IMAGE : INVITATIONS_OFF_IMAGE}
-                style={{
-                  width: INVITATIONS_IMAGE_WIDTH,
-                  height: INVITATIONS_IMAGE_WIDTH / (lookingDisplay ? INVITATIONS_ON_ASPECT_RATIO : INVITATIONS_OFF_ASPECT_RATIO),
-                }}
-                resizeMode="contain"
-              />
-            </AnimatedPressable>
-          </View>
         </MotiView>
       </WaveHeader>
+
+      <Reveal delay={nextDelay()}>
+        <AnimatedPressable style={styles.lookingCard} onPress={onToggleLooking}>
+          <Image
+            source={lookingDisplay ? INVITATIONS_ON_IMAGE : INVITATIONS_OFF_IMAGE}
+            style={{ width: "100%", aspectRatio: lookingDisplay ? INVITATIONS_ON_ASPECT_RATIO : INVITATIONS_OFF_ASPECT_RATIO }}
+            resizeMode="contain"
+          />
+        </AnimatedPressable>
+      </Reveal>
 
       <Reveal delay={nextDelay()}>
         <AnimatedPressable style={styles.ratingHero} onPress={() => setBreakdownOpen((v) => !v)}>
@@ -419,7 +408,14 @@ const styles = StyleSheet.create({
   greetingEyebrow: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "600" },
   greeting: { color: "#fff", fontSize: 21, fontWeight: "700", marginTop: 1 },
   meta: { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 },
-  heroRight: { alignItems: "center", justifyContent: "center" },
+  lookingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    ...shadows.raised,
+  },
   ratingHero: {
     flexDirection: "row",
     alignItems: "center",
