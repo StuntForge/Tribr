@@ -132,7 +132,27 @@ router.get("/users/:id", async (req, res) => {
     })),
     reportsMadeCount: user.reportsMade.length,
     subscription: user.subscription ? { status: user.subscription.status, currentPeriodEnd: user.subscription.currentPeriodEnd } : null,
+    // Diagnostic for "push notifications aren't arriving" reports - lets you
+    // see directly whether the device ever actually registered a token,
+    // rather than guessing between a client-side and server-side cause.
+    pushRegistered: Boolean(user.expoPushToken),
+    timezone: user.timezone,
+    lastDigestSentAt: user.lastDigestSentAt,
   });
+});
+
+// One-off manual push test for a specific user, so "notifications aren't
+// arriving" can be checked directly against a real device without waiting
+// for a real event or the daily digest window.
+router.post("/users/:id/test-push", async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { expoPushToken: true, firstName: true } });
+  if (!user) return res.status(404).json({ error: "User not found." });
+  if (!user.expoPushToken) return res.status(400).json({ error: "This user has no registered push token." });
+
+  await sendPushToUsers([req.params.id], "Test notification", "If you can see this, push notifications are working.", {
+    type: "ANNOUNCEMENT",
+  });
+  res.json({ ok: true });
 });
 
 const moderationSchema = z.object({ reason: z.string().min(1).max(500) });

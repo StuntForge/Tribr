@@ -15,6 +15,9 @@ interface UserDetailData {
   reportsReceived: { id: string; reason: string; details: string | null; status: string; reporterName: string | null; createdAt: string }[];
   reportsMadeCount: number;
   subscription: { status: string; currentPeriodEnd: string | null } | null;
+  pushRegistered: boolean;
+  timezone: string | null;
+  lastDigestSentAt: string | null;
 }
 
 export default function UserDetail() {
@@ -28,6 +31,8 @@ export default function UserDetail() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [testPushSending, setTestPushSending] = useState(false);
+  const [testPushError, setTestPushError] = useState<string | null>(null);
 
   const load = () => {
     apiFetch<UserDetailData>(`/api/admin/users/${id}`).then(setUser);
@@ -56,6 +61,19 @@ export default function UserDetail() {
       setError(e.message ?? "Something went wrong.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const sendTestPush = async () => {
+    setTestPushError(null);
+    setTestPushSending(true);
+    try {
+      await apiFetch(`/api/admin/users/${id}/test-push`, { method: "POST" });
+      setMessage("Test push sent - check the device.");
+    } catch (e: any) {
+      setTestPushError(e.message ?? "Something went wrong.");
+    } finally {
+      setTestPushSending(false);
     }
   };
 
@@ -106,6 +124,30 @@ export default function UserDetail() {
           <strong>Joined:</strong> {new Date(user.createdAt).toLocaleDateString()} &nbsp; <strong>Reports made:</strong>{" "}
           {user.reportsMadeCount}
         </p>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Push notifications</h3>
+        <p>
+          <strong>Device registered:</strong>{" "}
+          <span className={`badge ${user.pushRegistered ? "active" : "danger"}`}>{user.pushRegistered ? "Yes" : "No"}</span>
+          &nbsp; <strong>Timezone:</strong> {user.timezone ?? "—"}
+        </p>
+        <p className="hint">
+          <strong>Last daily digest sent:</strong>{" "}
+          {user.lastDigestSentAt ? new Date(user.lastDigestSentAt).toLocaleString() : "Never"}
+        </p>
+        {!user.pushRegistered && (
+          <p className="hint">
+            No device has registered a push token for this account yet - the app never successfully completed
+            registration (permission not granted, or something failed silently on launch). A test push can't be sent
+            until that happens.
+          </p>
+        )}
+        {testPushError && <div className="error">{testPushError}</div>}
+        <button className="btn" disabled={!user.pushRegistered || testPushSending} onClick={sendTestPush}>
+          {testPushSending ? "Sending…" : "Send test push"}
+        </button>
       </div>
 
       <div className="card">
