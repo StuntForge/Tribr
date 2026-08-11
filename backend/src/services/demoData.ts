@@ -412,22 +412,29 @@ export async function deleteDemoData() {
 // deleteDemoData above (most of User's relations don't have a DB-level
 // cascade, so anything that references this user or their tasks has to be
 // cleared first or the final user delete fails on a foreign-key error).
-// Refuses to touch a group this user leads if it has other active members -
-// that would silently orphan someone else's group, which a one-off "remove
-// this account" click shouldn't be able to do.
+// Refuses to touch a group this user leads only while it's still LIVE
+// (recruiting/working/etc) and has other active members - that would
+// silently orphan a group other people are actually still using. A
+// DISBANDED/COMPLETED group's GroupMember rows never get cleaned up to
+// "LEFT" (only the group's own state changes), so without excluding
+// finished states here, a leader of any group that ever ended would be
+// permanently undeletable even though there's nothing left to protect -
+// deleting a finished group only detaches other members' tasks/ratings
+// (which live independently and aren't touched), it doesn't remove them.
 export async function deleteUserAccount(userId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) return { ok: false, error: "User not found." };
 
   const ledGroups = await prisma.group.findMany({
     where: { leaderId: userId },
-    select: { id: true, name: true, members: { where: { status: "ACTIVE" }, select: { userId: true } } },
+    select: { id: true, name: true, state: true, members: { where: { status: "ACTIVE" }, select: { userId: true } } },
   });
-  const entangledGroup = ledGroups.find((g) => g.members.some((m) => m.userId !== userId));
+  const LIVE_STATES = ["RECRUITING", "READY", "WORKING", "DISSOLUTION"];
+  const entangledGroup = ledGroups.find((g) => LIVE_STATES.includes(g.state) && g.members.some((m) => m.userId !== userId));
   if (entangledGroup) {
     return {
       ok: false,
-      error: `This user leads "${entangledGroup.name}", which has other active members - disband or reassign it before deleting this account.`,
+      error: `This user leads "${entangledGroup.name}", which is still active with other members - disband or reassign it before deleting this account.`,
     };
   }
   const ledGroupIds = ledGroups.map((g) => g.id);
