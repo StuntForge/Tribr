@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Image, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { MotiView } from "moti";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +27,11 @@ const INVITATIONS_OFF_ASPECT_RATIO = 1416 / 273;
 
 export default function HomeScreen({ navigation }: any) {
   const { profile, refreshProfile } = useAuth();
+  const { width: windowWidth } = useWindowDimensions();
+  // width: "100%" + aspectRatio on an Image (no explicit height) blows up to
+  // the source PNG's native pixel size on some devices instead of scaling -
+  // computing an explicit pixel width/height sidesteps that entirely.
+  const lookingCardImageWidth = windowWidth - spacing.lg * 2 - spacing.sm * 2;
   const [toggling, setToggling] = useState(false);
   const [lookingDisplay, setLookingDisplay] = useState(profile?.lookingForGroup ?? false);
 
@@ -128,7 +133,10 @@ export default function HomeScreen({ navigation }: any) {
         <AnimatedPressable style={styles.lookingCard} onPress={onToggleLooking}>
           <Image
             source={lookingDisplay ? INVITATIONS_ON_IMAGE : INVITATIONS_OFF_IMAGE}
-            style={{ width: "100%", aspectRatio: lookingDisplay ? INVITATIONS_ON_ASPECT_RATIO : INVITATIONS_OFF_ASPECT_RATIO }}
+            style={{
+              width: lookingCardImageWidth,
+              height: lookingCardImageWidth / (lookingDisplay ? INVITATIONS_ON_ASPECT_RATIO : INVITATIONS_OFF_ASPECT_RATIO),
+            }}
             resizeMode="contain"
           />
         </AnimatedPressable>
