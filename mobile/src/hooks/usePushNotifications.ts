@@ -21,32 +21,90 @@ Notifications.setNotificationHandler({
 export function usePushNotifications(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
-    register().catch((e) => console.warn("Push registration failed:", e));
+    diagnosePushNotifications().then((result) => {
+      if (!result.success) {
+        const failed = result.steps.find((s) => !s.ok);
+        console.warn("Push registration failed at step:", failed?.label, failed?.detail);
+      }
+    });
   }, [enabled]);
 }
 
-async function register() {
-  if (!Device.isDevice) return; // push tokens aren't meaningful on simulators/emulators
+export interface PushDiagnosticStep {
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface PushDiagnosticResult {
+  success: boolean;
+  steps: PushDiagnosticStep[];
+}
+
+// Runs the same registration flow as the silent background version above,
+// but reports each step's outcome instead of swallowing failures. A
+// production build has no visible console, so this is what backs the
+// manual "Check push notifications" button in Profile - it turns an
+// invisible failure into something the user can read and report back.
+export async function diagnosePushNotifications(): Promise<PushDiagnosticResult> {
+  const steps: PushDiagnosticStep[] = [];
+
+  if (!Device.isDevice) {
+    steps.push({ label: "Physical device", ok: false, detail: "This is a simulator/emulator - push only works on a real phone." });
+    return { success: false, steps };
+  }
+  steps.push({ label: "Physical device", ok: true });
 
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
+    try {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "default",
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+      steps.push({ label: "Notification channel", ok: true });
+    } catch (e: any) {
+      steps.push({ label: "Notification channel", ok: false, detail: e?.message ?? String(e) });
+      return { success: false, steps };
+    }
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  let finalStatus: string;
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    finalStatus = existingStatus;
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    steps.push({ label: "Permission", ok: finalStatus === "granted", detail: finalStatus });
+    if (finalStatus !== "granted") return { success: false, steps };
+  } catch (e: any) {
+    steps.push({ label: "Permission", ok: false, detail: e?.message ?? String(e) });
+    return { success: false, steps };
   }
-  if (finalStatus !== "granted") return;
 
   const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-  if (!projectId) return;
+  steps.push({ label: "App project ID", ok: Boolean(projectId), detail: projectId ?? "missing" });
+  if (!projectId) return { success: false, steps };
 
-  const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  await registerPushToken(token, timezone);
+  let token: string;
+  try {
+    const result = await Notifications.getExpoPushTokenAsync({ projectId });
+    token = result.data;
+    steps.push({ label: "Get push token", ok: true, detail: `${token.slice(0, 24)}…` });
+  } catch (e: any) {
+    steps.push({ label: "Get push token", ok: false, detail: e?.message ?? String(e) });
+    return { success: false, steps };
+  }
+
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await registerPushToken(token, timezone);
+    steps.push({ label: "Save to server", ok: true });
+  } catch (e: any) {
+    steps.push({ label: "Save to server", ok: false, detail: e?.message ?? String(e) });
+    return { success: false, steps };
+  }
+
+  return { success: true, steps };
 }
