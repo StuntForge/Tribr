@@ -36,11 +36,19 @@ export interface MyGroupSummary {
 export interface GroupMemberInfo {
   userId: string;
   firstName: string | null;
+  photoUrl: string | null;
   isLeader: boolean;
   isPro: boolean;
   joinedAt: string;
   rating: number | null;
-  currentTask: { id: string; name: string; status: string; category: string; jobLength: string | null } | null;
+  currentTask: {
+    id: string;
+    name: string;
+    status: string;
+    category: string;
+    jobLength: string | null;
+    photoUrl: string | null;
+  } | null;
 }
 
 export interface QueueEntry {
@@ -69,6 +77,7 @@ export interface GroupDetail {
   sizeMax: number;
   leaderId: string;
   leaderName: string | null;
+  leaderTaskPhotoUrl: string | null;
   state: GroupState;
   currentCycleNumber: number;
   isLeader: boolean;
@@ -355,6 +364,7 @@ export function respondToInvitation(invitationId: string, accept: boolean) {
 export interface GroupCurrentTaskMember {
   userId: string;
   firstName: string | null;
+  photoUrl: string | null;
   isLeader: boolean;
   isPro: boolean;
   task: {

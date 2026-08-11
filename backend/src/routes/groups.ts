@@ -221,9 +221,10 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
   const order = cycle ? parseOrder(cycle) : [];
 
   const cycleTasks = cycle
-    ? await prisma.task.findMany({ where: { cycleId: cycle.id }, include: { category: true, owner: true } })
+    ? await prisma.task.findMany({ where: { cycleId: cycle.id }, include: { category: true, owner: true, photos: true } })
     : [];
   const tasksById = new Map(cycleTasks.map((t) => [t.id, t]));
+  const leaderTask = cycleTasks.find((t) => t.ownerId === group.leaderId) ?? null;
 
   // Pending dissolution vote, resolved lazily if its window has passed.
   let dissolutionVote = await prisma.dissolutionVote.findFirst({
@@ -293,6 +294,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     sizeMax: group.sizeMax,
     leaderId: group.leaderId,
     leaderName: group.leader.firstName,
+    leaderTaskPhotoUrl: leaderTask?.photos[0]?.url ?? null,
     state: refreshedGroup.state,
     currentCycleNumber: group.currentCycleNumber,
     isLeader: group.leaderId === viewerId,
@@ -306,12 +308,20 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
         return {
           userId: m.userId,
           firstName: m.user.firstName,
+          photoUrl: m.user.profilePhotoUrl,
           isLeader: m.isLeader,
           isPro: m.user.subscriptionTier === "SUBSCRIBER",
           joinedAt: m.joinedAt,
           rating: memberRatings[i],
           currentTask: task
-            ? { id: task.id, name: task.name, status: task.status, category: task.category.name, jobLength: task.jobLength }
+            ? {
+                id: task.id,
+                name: task.name,
+                status: task.status,
+                category: task.category.name,
+                jobLength: task.jobLength,
+                photoUrl: task.photos[0]?.url ?? null,
+              }
             : null,
         };
       })
@@ -1117,6 +1127,7 @@ router.get("/groups/:id/current-tasks", async (req, res) => {
       return {
         userId: m.userId,
         firstName: m.user.firstName,
+        photoUrl: m.user.profilePhotoUrl,
         isLeader: m.isLeader,
         isPro: m.user.subscriptionTier === "SUBSCRIBER",
         task: task

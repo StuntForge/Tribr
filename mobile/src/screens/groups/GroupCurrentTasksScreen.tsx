@@ -54,7 +54,7 @@ function MemberTaskCard({
   return (
     <View style={styles.card}>
       <View style={styles.identity}>
-        <Avatar name={member.firstName} photoUrl={null} size={32} />
+        <Avatar name={member.firstName} photoUrl={member.photoUrl} size={32} />
         <Text style={styles.name}>
           {member.firstName ?? "Member"} {member.isLeader ? "👑" : ""}
         </Text>

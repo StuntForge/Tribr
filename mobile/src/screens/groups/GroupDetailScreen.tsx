@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,16 @@ import TaskSelectRow from "../../components/TaskSelectRow";
 import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
 import { useToast } from "../../components/Toast";
-import { colors, radii, spacing } from "../../theme";
+import { colors, radii, shadows, spacing, type } from "../../theme";
+
+const STATE_LABEL: Record<string, string> = {
+  RECRUITING: "RECRUITING",
+  READY: "READY",
+  WORKING: "ACTIVE",
+  COMPLETED: "COMPLETED",
+  DISSOLUTION: "DISSOLUTION",
+  DISBANDED: "DISBANDED",
+};
 
 export default function GroupDetailScreen({ route, navigation }: any) {
   const { groupId } = route.params as { groupId: string };
@@ -34,6 +43,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [manageMode, setManageMode] = useState(false);
 
   const { data: group, isLoading } = useQuery({ queryKey: ["group", groupId], queryFn: () => getGroup(groupId) });
   const { data: tasks } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks });
@@ -139,6 +149,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const canManageMembers = group.isLeader && ["RECRUITING", "READY"].includes(group.state);
   const canVoteKick = group.state === "WORKING" && (group.isMember || group.isLeader);
   const openKickVotes = kickVotes?.filter((v) => v.outcome == null) ?? [];
+  const isActiveState = group.state === "WORKING";
 
   return (
     <KeyboardAwareScrollView
@@ -148,116 +159,150 @@ export default function GroupDetailScreen({ route, navigation }: any) {
       enableOnAndroid
       extraScrollHeight={24}
     >
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>{group.name}</Text>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{group.state}</Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          {group.leaderTaskPhotoUrl ? (
+            <Image source={{ uri: group.leaderTaskPhotoUrl }} style={styles.heroPhoto} />
+          ) : (
+            <View style={[styles.heroPhoto, styles.heroPhotoFallback]}>
+              <Ionicons name="people" size={28} color={colors.primary} />
+            </View>
+          )}
+          <View style={styles.heroTextCol}>
+            <View style={styles.heroTitleRow}>
+              <Text style={styles.heroTitle}>{group.name}</Text>
+              <StatePill state={group.state} />
+            </View>
+            <Text style={styles.heroMeta}>
+              {group.categories.length > 0 ? group.categories.map((c) => c.name).join(", ") : "Any category"} ·{" "}
+              {group.memberCount}/{group.sizeMax} members · Cycle {group.currentCycleNumber}
+              {group.averageMemberRating != null ? ` · ★ ${group.averageMemberRating.toFixed(1)}` : ""}
+            </Text>
+            {(group.verifiedOnly || group.minRating != null) && (
+              <Text style={styles.requirementMeta}>
+                Requires: {group.verifiedOnly ? "Verified members" : ""}
+                {group.verifiedOnly && group.minRating != null ? " · " : ""}
+                {group.minRating != null ? `${group.minRating.toFixed(1)}★ minimum rating` : ""}
+              </Text>
+            )}
+          </View>
         </View>
+        <Text style={styles.heroDescription}>{group.description}</Text>
       </View>
-      <Text style={styles.meta}>
-        {group.categories.length > 0 ? group.categories.map((c) => c.name).join(", ") : "Any category"} ·{" "}
-        {group.memberCount}/{group.sizeMax} members · Cycle {group.currentCycleNumber}
-        {group.averageMemberRating != null ? ` · ★ ${group.averageMemberRating.toFixed(1)}` : ""}
-      </Text>
-      {(group.verifiedOnly || group.minRating != null) && (
-        <Text style={styles.requirementMeta}>
-          Requires: {group.verifiedOnly ? "Verified members" : ""}
-          {group.verifiedOnly && group.minRating != null ? " · " : ""}
-          {group.minRating != null ? `${group.minRating.toFixed(1)}★ minimum rating` : ""}
-        </Text>
-      )}
-      <Text style={styles.description}>{group.description}</Text>
 
       {(group.isMember || group.isLeader) && (
-        <TouchableOpacity style={styles.secondaryButtonSmall} onPress={() => navigation.navigate("GroupChat", { groupId })}>
-          <Text style={styles.secondaryButtonText}>💬 Tribe chat</Text>
-        </TouchableOpacity>
+        <ActionRow
+          icon="chatbubble-ellipses"
+          title="Tribe chat"
+          subtitle="Chat with your Tribe"
+          onPress={() => navigation.navigate("GroupChat", { groupId })}
+        />
       )}
 
       {group.isLeader && (group.pendingApplicationCount ?? 0) > 0 && (
-        <TouchableOpacity
-          style={styles.banner}
-          onPress={() => navigation.navigate("Applications", { groupId })}
-        >
+        <TouchableOpacity style={styles.banner} onPress={() => navigation.navigate("Applications", { groupId })}>
           <Text style={styles.bannerText}>Review {group.pendingApplicationCount} pending application(s) →</Text>
         </TouchableOpacity>
       )}
 
       {group.isLeader && ["RECRUITING", "READY"].includes(group.state) && (
-        <Section title="Recruit">
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.secondaryButtonSmall}
-              onPress={() => navigation.navigate("SearchMembers", { groupIdToInviteTo: groupId })}
-            >
-              <Text style={styles.secondaryButtonText}>Find & invite members</Text>
-            </TouchableOpacity>
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconBadge}>
+              <Ionicons name="person-add" size={18} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardHeaderTitle}>Recruit members</Text>
+              <Text style={styles.cardHeaderSubtitle}>Find great people to join your Tribe.</Text>
+            </View>
           </View>
+          <TouchableOpacity
+            style={styles.primaryButtonFull}
+            onPress={() => navigation.navigate("SearchMembers", { groupIdToInviteTo: groupId })}
+          >
+            <Ionicons name="person-add" size={16} color="#fff" />
+            <Text style={styles.primaryButtonFullText}>Find & invite members</Text>
+          </TouchableOpacity>
           <PreviousMembersQuickInvite groupId={groupId} navigation={navigation} />
-        </Section>
+        </View>
       )}
 
-      <Section title="Members">
+      <View style={styles.card}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>
+            Members ({group.memberCount}/{group.sizeMax})
+          </Text>
+          {canManageMembers && (
+            <TouchableOpacity style={styles.managePill} onPress={() => setManageMode((v) => !v)}>
+              <Ionicons name="settings" size={13} color={colors.primary} />
+              <Text style={styles.managePillText}>Manage</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {openKickVotes.map((v) => (
-          <TouchableOpacity
-            key={v.id}
-            style={styles.banner}
-            onPress={() => navigation.navigate("KickVote", { voteId: v.id })}
-          >
+          <TouchableOpacity key={v.id} style={styles.banner} onPress={() => navigation.navigate("KickVote", { voteId: v.id })}>
             <Text style={styles.bannerText}>Vote in progress to remove {v.target.firstName} →</Text>
           </TouchableOpacity>
         ))}
-        {group.members.map((m) => {
+
+        {group.members.map((m, idx) => {
           const isSelf = m.userId === profile?.id;
-          const showRemove = canManageMembers && !m.isLeader && !isSelf;
+          const showRemove = canManageMembers && manageMode && !m.isLeader && !isSelf;
           const showVoteKick =
             canVoteKick && !m.isLeader && !isSelf && !openKickVotes.some((v) => v.target.id === m.userId);
+          const isUpNext = !!m.currentTask && group.queue.find((q) => q.taskId === m.currentTask!.id)?.isActive;
+          const isLast = idx === group.members.length - 1;
+
           return (
-            <View key={m.userId} style={styles.memberRow}>
+            <View key={m.userId} style={[styles.memberRow, !isLast && styles.memberRowDivider]}>
               <TouchableOpacity
                 style={styles.memberIdentity}
                 onPress={() => navigation.navigate("PublicProfile", { userId: m.userId })}
                 disabled={isSelf}
               >
-                <Avatar name={m.firstName} photoUrl={null} size={32} />
-                <Text style={styles.memberName}>
-                  {m.firstName} {m.isLeader ? "👑" : ""}
-                </Text>
-                {m.rating != null && (
-                  <View style={styles.memberRatingPill}>
-                    <Ionicons name="star" size={11} color={colors.star} />
-                    <Text style={styles.memberRatingText}>{m.rating.toFixed(1)}</Text>
+                <Avatar name={m.firstName} photoUrl={m.photoUrl} size={40} />
+                <View style={{ flex: 1 }}>
+                  <View style={styles.memberNameRow}>
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {m.firstName}
+                    </Text>
+                    {m.isLeader && <Ionicons name="ribbon" size={14} color={colors.star} />}
+                    {isSelf && (
+                      <View style={styles.youPill}>
+                        <Text style={styles.youPillText}>YOU</Text>
+                      </View>
+                    )}
+                    {m.rating != null && (
+                      <View style={styles.memberRatingPill}>
+                        <Ionicons name="star" size={11} color={colors.star} />
+                        <Text style={styles.memberRatingText}>{m.rating.toFixed(1)}</Text>
+                      </View>
+                    )}
+                    {m.isPro && <ProBadge size="tiny" />}
                   </View>
-                )}
-                {m.isPro && <ProBadge size="tiny" />}
-                <View style={{ flex: 1 }} />
-                {!isSelf && <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />}
+                  <Text style={styles.memberSubtitle} numberOfLines={1}>
+                    {m.currentTask ? m.currentTask.name : "No task this cycle"}
+                  </Text>
+                </View>
+                {!isSelf && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
               </TouchableOpacity>
+
               <View style={styles.memberBottomRow}>
-                {m.currentTask ? (
+                {isSelf && isUpNext ? (
+                  <View style={styles.upNextPill}>
+                    <Text style={styles.upNextPillText}>Up next</Text>
+                  </View>
+                ) : !isSelf && m.currentTask ? (
                   <TouchableOpacity
-                    style={styles.taskChip}
+                    style={styles.viewTaskLink}
                     onPress={() => navigation.navigate("TaskDetail", { taskId: m.currentTask!.id })}
                   >
-                    {m.currentTask.status === "ARCHIVED" ? (
-                      <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
-                    ) : group.queue.find((q) => q.taskId === m.currentTask!.id)?.isActive ? (
-                      <View style={styles.activeDot} />
-                    ) : null}
-                    <Text
-                      style={[
-                        styles.memberTaskLink,
-                        m.currentTask.status === "ARCHIVED" && styles.memberTaskDone,
-                        group.queue.find((q) => q.taskId === m.currentTask!.id)?.isActive && styles.memberTaskActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {m.currentTask.name}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                    <Text style={styles.viewTaskLinkText}>View task</Text>
+                    <Ionicons name="chevron-forward" size={13} color={colors.primary} />
                   </TouchableOpacity>
                 ) : (
-                  <Text style={styles.memberTask}>No task this cycle</Text>
+                  <View />
                 )}
                 <View style={{ flex: 1 }} />
                 {showRemove && (
@@ -278,11 +323,28 @@ export default function GroupDetailScreen({ route, navigation }: any) {
             </View>
           );
         })}
-      </Section>
+
+        {["RECRUITING", "READY"].includes(group.state) && group.memberCount < group.sizeMin && (
+          <View style={styles.infoBox}>
+            <Ionicons name="people" size={22} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.infoBoxTitle}>
+                Invite {group.sizeMin - group.memberCount} more member{group.sizeMin - group.memberCount === 1 ? "" : "s"} to
+                start your Tribe.
+              </Text>
+              <Text style={styles.infoBoxBody}>Start your Tribe when you have the right number of members.</Text>
+            </View>
+          </View>
+        )}
+      </View>
 
       {group.progress && group.progress.total > 0 && (group.state === "WORKING" || group.state === "COMPLETED") && (
-        <Section title="Cycle progress">
-          <View style={styles.progressBarTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: group.progress.total, now: group.progress.completed }}>
+        <View style={styles.card}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Cycle progress</Text>
+            <Text style={styles.cycleLabel}>Cycle {group.currentCycleNumber}</Text>
+          </View>
+          <View style={styles.progressBarTrack}>
             <View
               style={[
                 styles.progressBarFill,
@@ -294,21 +356,29 @@ export default function GroupDetailScreen({ route, navigation }: any) {
             {group.progress.completed} of {group.progress.total} task{group.progress.total === 1 ? "" : "s"} completed
             {group.progress.forgone > 0 ? ` (${group.progress.forgone} forgone)` : ""}
           </Text>
-        </Section>
+        </View>
       )}
 
       {group.state === "WORKING" && group.queue.length > 0 && (
-        <Section title="Task order">
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Task order</Text>
           {group.queue.map((q, i) => (
             <View key={q.taskId} style={[styles.queueRow, q.isActive && styles.queueRowActive]}>
               <Text style={styles.queuePosition}>{i + 1}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.memberName}>
+                <Text style={styles.queueTaskName} numberOfLines={1}>
                   {q.taskName} — {q.ownerName}
                 </Text>
-                <Text style={styles.memberTask}>
-                  {q.isActive ? (q.workDayConfirmed ? "In progress - work day confirmed" : "Active now") : q.status}
-                </Text>
+                <View style={styles.queueStatusRow}>
+                  {q.isActive && (
+                    <View style={styles.upNextPill}>
+                      <Text style={styles.upNextPillText}>Up next</Text>
+                    </View>
+                  )}
+                  <Text style={styles.queueStatusText}>
+                    {q.isActive ? (q.workDayConfirmed ? "In progress - work day confirmed" : "Active now") : q.status}
+                  </Text>
+                </View>
               </View>
               {q.isActive && !q.workDayConfirmed && (
                 <TouchableOpacity
@@ -320,11 +390,12 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               )}
             </View>
           ))}
-        </Section>
+        </View>
       )}
 
       {myActiveQueueTask && (
-        <Section title="Your task is active">
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Your task is active</Text>
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={styles.primaryButtonSmall}
@@ -355,11 +426,12 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               )}
             </TouchableOpacity>
           </View>
-        </Section>
+        </View>
       )}
 
       {canApply && (
-        <Section title="Apply to join">
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Apply to join</Text>
           {availableTasks.length === 0 ? (
             <Text style={styles.hint}>Add an available task from your Task Library first.</Text>
           ) : (
@@ -380,21 +452,22 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                 placeholder="Optional message to the Tribe leader"
               />
               <TouchableOpacity
-                style={[styles.primaryButtonSmall, (!selectedTaskId || busy) && styles.buttonDisabled]}
+                style={[styles.primaryButtonFull, (!selectedTaskId || busy) && styles.buttonDisabled]}
                 onPress={() => selectedTaskId && applyMutation.mutate(selectedTaskId)}
                 disabled={!selectedTaskId || busy}
               >
-                {applyMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Apply</Text>}
+                {applyMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonFullText}>Apply</Text>}
               </TouchableOpacity>
             </>
           )}
-        </Section>
+        </View>
       )}
 
       {group.state === "WORKING" && (
-        <Section title="Dissolution">
+        <>
           {group.dissolutionVote ? (
-            <>
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Dissolution</Text>
               <Text style={styles.hint}>
                 A member requested dissolution. Voting closes {new Date(group.dissolutionVote.endsAt).toLocaleString()}.
                 Not voting counts as Yes.
@@ -415,69 +488,118 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                   <Text style={styles.secondaryButtonText}>Vote No, keep going</Text>
                 </TouchableOpacity>
               </View>
-            </>
+            </View>
           ) : (
             (group.isMember || group.isLeader) && (
-              <TouchableOpacity
-                style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
-                onPress={() => requestDissolutionMutation.mutate(undefined as never)}
-                disabled={busy}
-              >
-                <Text style={styles.secondaryButtonText}>Request dissolution</Text>
-              </TouchableOpacity>
+              <ActionRow
+                icon="warning"
+                iconColor={colors.danger}
+                title="Request dissolution"
+                titleColor={colors.danger}
+                onPress={() => (busy ? undefined : requestDissolutionMutation.mutate(undefined as never))}
+              />
             )
           )}
-        </Section>
+        </>
       )}
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Section title="Actions">
-        <View style={styles.actionRow}>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Actions</Text>
+        {group.isLeader && group.state !== "READY" && ["RECRUITING", "READY"].includes(group.state) && (
+          <Text style={styles.hint}>Start Work unlocks once at least {group.sizeMin} members have an approved task.</Text>
+        )}
+        <View style={styles.actionColumn}>
           {group.isLeader && ["RECRUITING", "READY"].includes(group.state) && (
             <>
               <TouchableOpacity
-                style={[styles.primaryButtonSmall, (group.state !== "READY" || busy) && styles.buttonDisabled]}
+                style={[styles.primaryButtonFull, (group.state !== "READY" || busy) && styles.buttonDisabled]}
                 onPress={() => startWorkMutation.mutate(undefined as never)}
                 disabled={group.state !== "READY" || busy}
               >
-                {startWorkMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Start Work</Text>}
+                {startWorkMutation.isPending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="play" size={16} color="#fff" />
+                    <Text style={styles.primaryButtonFullText}>Start Tribe</Text>
+                  </>
+                )}
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.dangerButtonSmall, busy && styles.buttonDisabled]} onPress={confirmDisband} disabled={busy}>
-                <Text style={styles.dangerButtonText}>Disband</Text>
+              <TouchableOpacity style={[styles.dangerButtonFull, busy && styles.buttonDisabled]} onPress={confirmDisband} disabled={busy}>
+                <Ionicons name="trash" size={16} color={colors.danger} />
+                <Text style={styles.dangerButtonFullText}>Disband Tribe</Text>
               </TouchableOpacity>
             </>
           )}
           {group.isLeader && group.state === "COMPLETED" && (
             <>
               <TouchableOpacity
-                style={[styles.primaryButtonSmall, busy && styles.buttonDisabled]}
+                style={[styles.primaryButtonFull, busy && styles.buttonDisabled]}
                 onPress={() => completeCycleMutation.mutate("START_NEW_CYCLE")}
                 disabled={busy}
               >
-                <Text style={styles.primaryButtonText}>Start new cycle</Text>
+                <Text style={styles.primaryButtonFullText}>Start new cycle</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.dangerButtonSmall, busy && styles.buttonDisabled]}
+                style={[styles.dangerButtonFull, busy && styles.buttonDisabled]}
                 onPress={() => completeCycleMutation.mutate("DISBAND")}
                 disabled={busy}
               >
-                <Text style={styles.dangerButtonText}>End Tribe & disband</Text>
+                <Ionicons name="trash" size={16} color={colors.danger} />
+                <Text style={styles.dangerButtonFullText}>End Tribe & disband</Text>
               </TouchableOpacity>
             </>
           )}
           {!group.isLeader && group.isMember && ["RECRUITING", "READY", "COMPLETED"].includes(group.state) && (
-            <TouchableOpacity style={[styles.dangerButtonSmall, busy && styles.buttonDisabled]} onPress={confirmLeave} disabled={busy}>
-              <Text style={styles.dangerButtonText}>Leave Tribe</Text>
+            <TouchableOpacity style={[styles.dangerButtonFull, busy && styles.buttonDisabled]} onPress={confirmLeave} disabled={busy}>
+              <Text style={styles.dangerButtonFullText}>Leave Tribe</Text>
             </TouchableOpacity>
           )}
           {group.state === "DISBANDED" && <Text style={styles.hint}>This Tribe has ended.</Text>}
         </View>
-        {group.isLeader && group.state !== "READY" && ["RECRUITING", "READY"].includes(group.state) && (
-          <Text style={styles.hint}>Start Work unlocks once at least {group.sizeMin} members have an approved task.</Text>
-        )}
-      </Section>
+      </View>
     </KeyboardAwareScrollView>
+  );
+}
+
+function StatePill({ state }: { state: string }) {
+  const isActive = state === "WORKING";
+  return (
+    <View style={[styles.statePill, isActive && styles.statePillFilled]}>
+      {isActive && <Ionicons name="play" size={10} color="#fff" />}
+      <Text style={[styles.statePillText, isActive && styles.statePillTextFilled]}>{STATE_LABEL[state] ?? state}</Text>
+    </View>
+  );
+}
+
+function ActionRow({
+  icon,
+  iconColor = colors.primary,
+  title,
+  titleColor = colors.text,
+  subtitle,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor?: string;
+  title: string;
+  titleColor?: string;
+  subtitle?: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.actionRowCard} onPress={onPress}>
+      <View style={[styles.iconBadge, iconColor !== colors.primary && { backgroundColor: colors.dangerLight }]}>
+        <Ionicons name={icon} size={18} color={iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.cardHeaderTitle, { color: titleColor }]}>{title}</Text>
+        {subtitle && <Text style={styles.cardHeaderSubtitle}>{subtitle}</Text>}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
   );
 }
 
@@ -505,68 +627,130 @@ function PreviousMembersQuickInvite({ groupId, navigation }: { groupId: string; 
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing.xl },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
-  title: { fontSize: 22, fontWeight: "700", color: colors.text, flex: 1 },
-  badge: { borderWidth: 1, borderColor: colors.primary, borderRadius: 12, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  badgeText: { fontSize: 11, fontWeight: "600", color: colors.primary },
-  meta: { fontSize: 12, color: colors.textMuted, marginTop: spacing.xs },
-  requirementMeta: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: 2 },
-  description: { fontSize: 14, color: colors.text, marginTop: spacing.sm, lineHeight: 20 },
-  banner: { backgroundColor: colors.primary, borderRadius: 10, padding: spacing.md, marginTop: spacing.md },
-  bannerText: { color: "#fff", fontWeight: "600", textAlign: "center" },
-  section: { marginTop: spacing.lg },
-  sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
-  memberRow: {
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: spacing.xs,
+
+  heroCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.card,
   },
-  memberIdentity: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  heroTopRow: { flexDirection: "row", gap: spacing.md },
+  heroPhoto: { width: 92, height: 92, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
+  heroPhotoFallback: { alignItems: "center", justifyContent: "center" },
+  heroTextCol: { flex: 1, gap: 2 },
+  heroTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
+  heroTitle: { ...type.h2, flex: 1 },
+  heroMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  requirementMeta: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: 2 },
+  heroDescription: { fontSize: 14, color: colors.text, marginTop: spacing.sm, lineHeight: 20 },
+
+  statePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  statePillFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
+  statePillText: { fontSize: 10, fontWeight: "800", color: colors.primary, letterSpacing: 0.3 },
+  statePillTextFilled: { color: "#fff" },
+
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.card,
+  },
+  actionRowCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.card,
+  },
+  cardHeaderRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  cardHeaderTitle: { fontSize: 15, fontWeight: "700", color: colors.text },
+  cardHeaderSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  iconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
+  cycleLabel: { fontSize: 12, fontWeight: "700", color: colors.textMuted },
+
+  managePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  managePillText: { fontSize: 12, fontWeight: "700", color: colors.primary },
+
+  banner: { backgroundColor: colors.primary, borderRadius: 10, padding: spacing.md, marginBottom: spacing.md },
+  bannerText: { color: "#fff", fontWeight: "600", textAlign: "center" },
+
+  memberRow: { paddingVertical: spacing.sm, gap: spacing.xs },
+  memberRowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  memberIdentity: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  memberNameRow: { flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" },
+  memberName: { fontSize: 14, fontWeight: "700", color: colors.text, flexShrink: 1 },
+  memberSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  youPill: { backgroundColor: colors.primary, borderRadius: radii.pill, paddingHorizontal: 7, paddingVertical: 1 },
+  youPillText: { fontSize: 9, fontWeight: "800", color: "#fff", letterSpacing: 0.3 },
   memberRatingPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: radii.pill,
     paddingVertical: 2,
     paddingHorizontal: 6,
   },
   memberRatingText: { fontSize: 11, fontWeight: "700", color: colors.text },
-  memberBottomRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  memberBottomRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: 48 },
   memberActionText: { fontSize: 12, fontWeight: "600", color: colors.danger },
-  memberName: { fontSize: 14, fontWeight: "600", color: colors.text },
-  memberTask: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  taskChip: {
+  upNextPill: { backgroundColor: colors.primary, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  upNextPillText: { fontSize: 11, fontWeight: "700", color: "#fff" },
+  viewTaskLink: { flexDirection: "row", alignItems: "center", gap: 2 },
+  viewTaskLinkText: { fontSize: 12, fontWeight: "700", color: colors.primary },
+
+  infoBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    maxWidth: 240,
-    flexShrink: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surface,
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
   },
-  memberTaskLink: { fontSize: 12, color: colors.primary, fontWeight: "600", flexShrink: 1 },
-  memberTaskDone: { textDecorationLine: "line-through", color: colors.primary },
-  memberTaskActive: { color: colors.primaryDark, fontWeight: "700" },
-  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
+  infoBoxTitle: { fontSize: 13, fontWeight: "700", color: colors.text, lineHeight: 18 },
+  infoBoxBody: { fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
+
+  progressBarTrack: { height: 10, borderRadius: 5, backgroundColor: colors.border, overflow: "hidden", marginBottom: spacing.xs },
+  progressBarFill: { height: "100%", backgroundColor: colors.primary, borderRadius: 5 },
+
   queueRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -575,13 +759,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  queueRowActive: { backgroundColor: "#EAF4EE", borderRadius: 8, paddingHorizontal: spacing.sm },
+  queueRowActive: { backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: spacing.sm },
   queuePosition: { fontSize: 14, fontWeight: "700", color: colors.textMuted, width: 20 },
+  queueTaskName: { fontSize: 14, fontWeight: "700", color: colors.text },
+  queueStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: 2 },
+  queueStatusText: { fontSize: 12, color: colors.textMuted },
+
   hint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm },
-  progressBarTrack: { height: 10, borderRadius: 5, backgroundColor: colors.border, overflow: "hidden", marginBottom: spacing.xs },
-  progressBarFill: { height: "100%", backgroundColor: colors.primary, borderRadius: 5 },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
@@ -589,13 +775,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: spacing.sm,
   },
-  error: { color: colors.danger, marginTop: spacing.md },
+  error: { color: colors.danger, marginBottom: spacing.md, textAlign: "center" },
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  actionColumn: { gap: spacing.sm },
   primaryButtonSmall: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   primaryButtonText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  primaryButtonFull: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm + 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryButtonFullText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   secondaryButtonSmall: { borderWidth: 1, borderColor: colors.primary, borderRadius: 10, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   secondaryButtonText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
-  dangerButtonSmall: { borderWidth: 1, borderColor: colors.danger, borderRadius: 10, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-  dangerButtonText: { color: colors.danger, fontWeight: "600", fontSize: 13 },
+  dangerButtonFull: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    borderWidth: 1.5,
+    borderColor: colors.danger,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm + 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dangerButtonFullText: { color: colors.danger, fontWeight: "700", fontSize: 14 },
   buttonDisabled: { opacity: 0.4 },
 });
