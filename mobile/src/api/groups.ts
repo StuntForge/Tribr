@@ -85,6 +85,7 @@ export interface GroupDetail {
   memberCount: number;
   averageMemberRating: number | null;
   pendingApplicationCount?: number;
+  declinedTaskIds: string[];
   members: GroupMemberInfo[];
   queue: QueueEntry[];
   progress: { completed: number; forgone: number; total: number } | null;
@@ -355,6 +356,24 @@ export interface MyInvitation {
 
 export function getMyInvitations() {
   return apiFetch<MyInvitation[]>("/api/me/invitations");
+}
+
+export interface MyApplication {
+  id: string;
+  groupId: string;
+  groupName: string;
+  task: { id: string; name: string; category: string; jobLength: string | null };
+  status: "PENDING" | "TASK_REQUESTED" | "TASK_SUGGESTED";
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+export function getMyApplications() {
+  return apiFetch<MyApplication[]>("/api/me/applications");
+}
+
+export function withdrawApplication(groupId: string, appId: string) {
+  return apiFetch<{ ok: true }>(`/api/groups/${groupId}/applications/${appId}/withdraw`, { method: "POST" });
 }
 
 export function respondToInvitation(invitationId: string, accept: boolean) {

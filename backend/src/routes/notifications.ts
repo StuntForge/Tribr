@@ -35,6 +35,7 @@ const ACTION_ITEM_TYPES = [
   "RATE_HOST_PENDING",
   "KICK_VOTE_STARTED",
   "TASK_ACTIVE",
+  "APPLICATION_TASK_REQUESTED",
 ];
 
 // 5.11 - reminders. There's no background scheduler yet, so instead of a
@@ -238,6 +239,24 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
         voteId: v.id,
       });
     }
+  }
+
+  // A leader asking for a different task leaves the application sitting in
+  // TASK_REQUESTED indefinitely otherwise - nothing else prompts the
+  // applicant to actually go resolve it.
+  const taskRequestedApplications = await prisma.groupApplication.findMany({
+    where: { applicantId: userId, status: "TASK_REQUESTED" },
+    include: { group: true },
+  });
+  for (const a of taskRequestedApplications) {
+    items.push({
+      id: `task-requested:${a.id}`,
+      type: "APPLICATION_TASK_REQUESTED",
+      title: "Choose a different task",
+      body: `${a.group.name}'s leader asked you to submit a different task${a.rejectionReason ? `: ${a.rejectionReason}` : "."}`,
+      createdAt: a.updatedAt,
+      groupId: a.groupId,
+    });
   }
 
   const attendedEvents = await prisma.ratingEvent.findMany({

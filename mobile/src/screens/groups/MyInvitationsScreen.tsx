@@ -1,20 +1,42 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getMyInvitations, MyInvitation, respondToInvitation } from "../../api/groups";
+import {
+  getMyApplications,
+  getMyInvitations,
+  MyApplication,
+  MyInvitation,
+  respondToInvitation,
+  withdrawApplication,
+} from "../../api/groups";
+import { jobLengthLabelShort } from "../../constants/jobLength";
 import ProBadge from "../../components/ProBadge";
+import SegmentedTabs from "../../components/SegmentedTabs";
 import SortSelect from "../../components/SortSelect";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 type SortKey = "distance" | "members";
+type Tab = "invitations" | "applications";
 
-export default function MyInvitationsScreen({ navigation }: any) {
+const APPLICATION_STATUS_LABEL: Record<MyApplication["status"], string> = {
+  PENDING: "Waiting on the leader",
+  TASK_REQUESTED: "Leader asked for a different task",
+  TASK_SUGGESTED: "Leader suggested a different task",
+};
+
+export default function MyInvitationsScreen({ route, navigation }: any) {
   const queryClient = useQueryClient();
-  const { data: invitations, isLoading } = useQuery({ queryKey: ["my-invitations"], queryFn: getMyInvitations });
+  const [tab, setTab] = useState<Tab>(route?.params?.initialTab === "applications" ? "applications" : "invitations");
   const [sort, setSort] = useState<SortKey>("distance");
 
-  const sorted = useMemo(() => {
+  const { data: invitations, isLoading: invitationsLoading } = useQuery({ queryKey: ["my-invitations"], queryFn: getMyInvitations });
+  const { data: applications, isLoading: applicationsLoading } = useQuery({
+    queryKey: ["my-applications"],
+    queryFn: getMyApplications,
+  });
+
+  const sortedInvitations = useMemo(() => {
     if (!invitations) return invitations;
     const copy = [...invitations];
     if (sort === "distance") {
@@ -27,8 +49,10 @@ export default function MyInvitationsScreen({ navigation }: any) {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["my-invitations"] });
+    queryClient.invalidateQueries({ queryKey: ["my-applications"] });
     queryClient.invalidateQueries({ queryKey: ["my-groups"] });
     queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    queryClient.invalidateQueries({ queryKey: ["action-items"] });
   };
 
   const respondMutation = useMutation({
@@ -40,47 +64,103 @@ export default function MyInvitationsScreen({ navigation }: any) {
     },
   });
 
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+  const withdrawMutation = useMutation({
+    mutationFn: ({ groupId, appId }: { groupId: string; appId: string }) => withdrawApplication(groupId, appId),
+    onSuccess: invalidate,
+  });
+
+  const confirmWithdraw = (application: MyApplication) => {
+    Alert.alert(
+      "Withdraw application?",
+      `This frees up "${application.task.name}" so you can submit it elsewhere.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Withdraw",
+          style: "destructive",
+          onPress: () => withdrawMutation.mutate({ groupId: application.groupId, appId: application.id }),
+        },
+      ]
     );
-  }
+  };
+
+  const invitationCount = invitations?.length ?? 0;
+  const applicationCount = applications?.length ?? 0;
 
   return (
-    <FlatList
-      style={styles.container}
-      contentContainerStyle={styles.listContent}
-      data={sorted}
-      keyExtractor={(i) => i.id}
-      ListHeaderComponent={
-        (invitations?.length ?? 0) > 0 ? (
-          <View style={{ marginBottom: spacing.md }}>
-            <SortSelect
-              options={[
-                { value: "distance", label: "Distance" },
-                { value: "members", label: "Total members" },
-              ]}
-              value={sort}
-              onChange={setSort}
-            />
+    <View style={styles.container}>
+      <View style={styles.tabRow}>
+        <SegmentedTabs
+          options={[
+            { value: "invitations", label: `Invitations${invitationCount > 0 ? ` (${invitationCount})` : ""}`, icon: "mail-open" },
+            { value: "applications", label: `Applications${applicationCount > 0 ? ` (${applicationCount})` : ""}`, icon: "paper-plane" },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+      </View>
+
+      {tab === "invitations" ? (
+        invitationsLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.primary} />
           </View>
-        ) : null
-      }
-      ListEmptyComponent={<Text style={styles.emptyBody}>No pending invitations.</Text>}
-      renderItem={({ item }) => (
-        <InvitationCard
-          invitation={item}
-          busy={respondMutation.isPending}
-          pendingAccept={respondMutation.isPending && respondMutation.variables?.id === item.id && respondMutation.variables.accept}
-          pendingDecline={respondMutation.isPending && respondMutation.variables?.id === item.id && !respondMutation.variables.accept}
-          onAccept={() => respondMutation.mutate({ id: item.id, accept: true })}
-          onDecline={() => respondMutation.mutate({ id: item.id, accept: false })}
-          onViewTasks={() => navigation.navigate("GroupCurrentTasks", { groupId: item.group.id, groupName: item.group.name })}
+        ) : (
+          <FlatList
+            style={styles.container}
+            contentContainerStyle={styles.listContent}
+            data={sortedInvitations}
+            keyExtractor={(i) => i.id}
+            ListHeaderComponent={
+              invitationCount > 0 ? (
+                <View style={{ marginBottom: spacing.md }}>
+                  <SortSelect
+                    options={[
+                      { value: "distance", label: "Distance" },
+                      { value: "members", label: "Total members" },
+                    ]}
+                    value={sort}
+                    onChange={setSort}
+                  />
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={<Text style={styles.emptyBody}>No pending invitations.</Text>}
+            renderItem={({ item }) => (
+              <InvitationCard
+                invitation={item}
+                busy={respondMutation.isPending}
+                pendingAccept={respondMutation.isPending && respondMutation.variables?.id === item.id && respondMutation.variables.accept}
+                pendingDecline={respondMutation.isPending && respondMutation.variables?.id === item.id && !respondMutation.variables.accept}
+                onAccept={() => respondMutation.mutate({ id: item.id, accept: true })}
+                onDecline={() => respondMutation.mutate({ id: item.id, accept: false })}
+                onViewTasks={() => navigation.navigate("GroupCurrentTasks", { groupId: item.group.id, groupName: item.group.name })}
+              />
+            )}
+          />
+        )
+      ) : applicationsLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          style={styles.container}
+          contentContainerStyle={styles.listContent}
+          data={applications}
+          keyExtractor={(a) => a.id}
+          ListEmptyComponent={<Text style={styles.emptyBody}>No open applications.</Text>}
+          renderItem={({ item }) => (
+            <ApplicationCard
+              application={item}
+              busy={withdrawMutation.isPending && withdrawMutation.variables?.appId === item.id}
+              onViewGroup={() => navigation.navigate("GroupDetail", { groupId: item.groupId })}
+              onWithdraw={() => confirmWithdraw(item)}
+            />
+          )}
         />
       )}
-    />
+    </View>
   );
 }
 
@@ -149,6 +229,45 @@ function InvitationCard({
   );
 }
 
+function ApplicationCard({
+  application,
+  busy,
+  onViewGroup,
+  onWithdraw,
+}: {
+  application: MyApplication;
+  busy: boolean;
+  onViewGroup: () => void;
+  onWithdraw: () => void;
+}) {
+  const needsAttention = application.status !== "PENDING";
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <Text style={styles.groupName}>{application.groupName}</Text>
+        <View style={[styles.statusPill, needsAttention && styles.statusPillAlert]}>
+          <Text style={[styles.statusPillText, needsAttention && styles.statusPillTextAlert]}>
+            {APPLICATION_STATUS_LABEL[application.status]}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.taskLine}>
+        {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
+      </Text>
+      {application.rejectionReason && <Text style={styles.reasonText}>"{application.rejectionReason}"</Text>}
+
+      <TouchableOpacity style={styles.viewTasksButton} onPress={onViewGroup}>
+        <Ionicons name="people" size={14} color={colors.primary} />
+        <Text style={styles.viewTasksButtonText}>View Tribe</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.withdrawButton, busy && styles.buttonDisabled]} onPress={onWithdraw} disabled={busy}>
+        {busy ? <ActivityIndicator color={colors.danger} /> : <Text style={styles.withdrawButtonText}>Withdraw application</Text>}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function DetailRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
   return (
     <View style={styles.detailRow}>
@@ -160,8 +279,9 @@ function DetailRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; labe
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  tabRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  listContent: { padding: spacing.lg, flexGrow: 1 },
+  listContent: { padding: spacing.lg, paddingTop: spacing.sm, flexGrow: 1 },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", marginTop: spacing.xl },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, ...shadows.card },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
@@ -173,6 +293,11 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   detailText: { fontSize: 12, color: colors.text },
   taskLine: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: spacing.sm },
+  reasonText: { fontSize: 12, color: colors.textMuted, fontStyle: "italic", marginTop: spacing.xs },
+  statusPill: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  statusPillAlert: { backgroundColor: colors.dangerLight },
+  statusPillText: { fontSize: 11, fontWeight: "700", color: colors.textMuted },
+  statusPillTextAlert: { color: colors.danger },
   viewTasksButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -185,6 +310,15 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   viewTasksButtonText: { color: colors.primary, fontWeight: "700", fontSize: 12 },
+  withdrawButton: {
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  withdrawButtonText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   actionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
   primaryButton: { flex: 1, backgroundColor: colors.primary, borderRadius: 10, padding: spacing.sm, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "600" },

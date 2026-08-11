@@ -189,9 +189,18 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
               </View>
             </EmptyState>
           }
-          renderItem={({ item }) => (
-            <TaskCard task={item} onPress={() => navigation.navigate("CreateEditTask", { taskId: item.id })} />
-          )}
+          renderItem={({ item }) => {
+            // Submitted/assigned tasks can't be edited until they're back to
+            // AVAILABLE - route to the read-only detail view instead of the
+            // edit form so there's nothing to type into and lose.
+            const locked = ["SUBMITTED", "APPROVED", "ACTIVE"].includes(item.status);
+            return (
+              <TaskCard
+                task={item}
+                onPress={() => navigation.navigate(locked ? "TaskDetail" : "CreateEditTask", { taskId: item.id })}
+              />
+            );
+          }}
         />
       ) : (
         <FlatList

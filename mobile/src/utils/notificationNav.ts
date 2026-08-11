@@ -25,6 +25,9 @@ export function resolveNotificationRoute(rawType: string | undefined, extra: Not
     case "GROUP_INVITATION":
       return { tab: "Groups", screen: "MyInvitations" };
 
+    case "APPLICATION_TASK_REQUESTED":
+      return { tab: "Groups", screen: "MyInvitations", params: { initialTab: "applications" } };
+
     case "KICK_VOTE_OUTCOME":
     case "KICK_VOTE_STARTED":
     case "KICK_VOTE":

@@ -436,15 +436,20 @@ export default function GroupDetailScreen({ route, navigation }: any) {
             <Text style={styles.hint}>Add an available task from your Task Library first.</Text>
           ) : (
             <>
-              {availableTasks.map((t) => (
-                <TaskSelectRow
-                  key={t.id}
-                  task={t}
-                  selected={selectedTaskId === t.id}
-                  onSelect={() => setSelectedTaskId(t.id)}
-                  navigation={navigation}
-                />
-              ))}
+              {availableTasks.map((t) => {
+                const declined = group.declinedTaskIds.includes(t.id);
+                return (
+                  <TaskSelectRow
+                    key={t.id}
+                    task={t}
+                    selected={selectedTaskId === t.id}
+                    onSelect={() => !declined && setSelectedTaskId(t.id)}
+                    navigation={navigation}
+                    disabled={declined}
+                    disabledReason="Recently declined for this Tribe - choose a different task."
+                  />
+                );
+              })}
               <TextInput
                 style={styles.input}
                 value={message}

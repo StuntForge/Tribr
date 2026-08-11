@@ -80,9 +80,12 @@ async function serializeTask(
   };
 }
 
-// 3.6 - a task is editable/deletable only while it hasn't been committed to a working cycle.
-function isLocked(task: { groupId: string | null; group: { state: string } | null }) {
-  return Boolean(task.groupId && task.group && task.group.state === "WORKING");
+// 3.6 - a task is editable only while it's genuinely free (AVAILABLE/DRAFT).
+// Previously this only locked once the group started WORKING, which left a
+// window open the whole time a task sat SUBMITTED or APPROVED to a group
+// still recruiting - editable right up until the cycle kicked off.
+function isLocked(task: { status: string }) {
+  return ["SUBMITTED", "APPROVED", "ACTIVE"].includes(task.status);
 }
 
 router.get("/job-categories", async (_req, res) => {
@@ -119,7 +122,7 @@ router.get("/tasks/:id", async (req, res) => {
 router.get("/tasks/:id/public", async (req, res) => {
   const task = await prisma.task.findUnique({
     where: { id: req.params.id },
-    include: { category: true, photos: true, owner: true },
+    include: { category: true, photos: true, owner: true, group: true },
   });
   if (!task) return res.status(404).json({ error: "Task not found." });
 
@@ -135,7 +138,31 @@ router.get("/tasks/:id/public", async (req, res) => {
     photos: task.photos.map((p) => ({ id: p.id, url: p.url })),
     ownerId: task.ownerId,
     ownerFirstName: task.owner.firstName,
+    groupId: task.groupId,
+    groupName: task.group?.name ?? null,
   });
+});
+
+// Lets the owner back out of a task they've submitted to a Tribe (still
+// awaiting a decision) without having to wait on the leader to reject it -
+// mirrors /groups/:id/applications/:appId/withdraw but reachable from the
+// task's own detail screen, which only has the taskId to hand.
+router.post("/tasks/:id/withdraw-application", async (req, res) => {
+  const task = await prisma.task.findFirst({ where: { id: req.params.id, ownerId: req.userId, status: "SUBMITTED" } });
+  if (!task) return res.status(400).json({ error: "This task isn't currently submitted to a Tribe." });
+
+  const application = await prisma.groupApplication.findFirst({
+    where: { taskId: task.id, applicantId: req.userId, status: { in: ["PENDING", "TASK_REQUESTED", "TASK_SUGGESTED"] } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!application) return res.status(404).json({ error: "No open application found for this task." });
+
+  await prisma.$transaction([
+    prisma.task.update({ where: { id: task.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } }),
+    prisma.groupApplication.update({ where: { id: application.id }, data: { status: "WITHDRAWN" } }),
+  ]);
+
+  res.json({ ok: true });
 });
 
 const locationSchema = z.union([

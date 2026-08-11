@@ -239,6 +239,16 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
       ? await prisma.groupApplication.count({ where: { groupId: group.id, status: "PENDING" } })
       : undefined;
 
+  // 3.9 - a task recently declined for this group can't be immediately
+  // resubmitted (enforced server-side in /apply too) - surfaced here so the
+  // task picker can grey those out up front instead of letting someone pick
+  // one only to hit a rejection error.
+  const declinedApplications = await prisma.groupApplication.findMany({
+    where: { groupId: group.id, applicantId: viewerId, status: { in: ["REJECTED", "TASK_REQUESTED"] } },
+    select: { taskId: true },
+  });
+  const declinedTaskIds = declinedApplications.map((a) => a.taskId);
+
   const activeMemberCount = group.members.length;
 
   const memberRatings = await Promise.all(group.members.map(async (m) => (await computeRatingSummary(m.userId)).overallRating));
@@ -302,6 +312,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     memberCount: activeMemberCount,
     averageMemberRating,
     pendingApplicationCount,
+    declinedTaskIds,
     members: group.members
       .map((m, i) => {
         const task = [...tasksById.values()].find((t) => t.ownerId === m.userId);
@@ -972,6 +983,29 @@ router.post("/groups/:id/applications/:appId/respond-to-suggestion", async (req,
   res.json({ ok: true });
 });
 
+// Lets an applicant back out of their own still-open application - without
+// this, a task submitted to a Tribe (or one waiting on the applicant to pick
+// a different task after a leader's request) had no way back to AVAILABLE
+// except waiting on the leader to reject it.
+router.post("/groups/:id/applications/:appId/withdraw", async (req, res) => {
+  const application = await prisma.groupApplication.findFirst({
+    where: {
+      id: req.params.appId,
+      groupId: req.params.id,
+      applicantId: req.userId,
+      status: { in: ["PENDING", "TASK_REQUESTED", "TASK_SUGGESTED"] },
+    },
+  });
+  if (!application) return res.status(404).json({ error: "Application not found." });
+
+  await prisma.$transaction([
+    releaseTaskTx(application.taskId),
+    prisma.groupApplication.update({ where: { id: application.id }, data: { status: "WITHDRAWN" } }),
+  ]);
+
+  res.json({ ok: true });
+});
+
 // ---------- Invitations (7.8) ----------
 
 // 7.10 - members who've left this group before, easy to invite back for a new cycle.
@@ -1104,6 +1138,29 @@ router.get("/me/invitations", async (req, res) => {
         suggestedTask: i.suggestedTask ? { id: i.suggestedTask.id, name: i.suggestedTask.name } : null,
       };
     })
+  );
+});
+
+// Mirror of /me/invitations, but for applications *this user* has sent out -
+// so they can see (and withdraw) an application they're waiting on, instead
+// of their task being stuck attached to a Tribe with no way back out.
+router.get("/me/applications", async (req, res) => {
+  const applications = await prisma.groupApplication.findMany({
+    where: { applicantId: req.userId, status: { in: ["PENDING", "TASK_REQUESTED", "TASK_SUGGESTED"] } },
+    include: { group: true, task: { include: { category: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json(
+    applications.map((a) => ({
+      id: a.id,
+      groupId: a.groupId,
+      groupName: a.group.name,
+      task: { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength },
+      status: a.status,
+      rejectionReason: a.rejectionReason,
+      createdAt: a.createdAt,
+    }))
   );
 });
 

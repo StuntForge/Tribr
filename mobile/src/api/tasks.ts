@@ -58,10 +58,16 @@ export interface PublicTask {
   photos: { id: string; url: string }[];
   ownerId: string;
   ownerFirstName: string | null;
+  groupId: string | null;
+  groupName: string | null;
 }
 
 export function getPublicTask(id: string) {
   return apiFetch<PublicTask>(`/api/tasks/${id}/public`);
+}
+
+export function withdrawTaskApplication(taskId: string) {
+  return apiFetch<{ ok: true }>(`/api/tasks/${taskId}/withdraw-application`, { method: "POST" });
 }
 
 export type TaskLocationInput =

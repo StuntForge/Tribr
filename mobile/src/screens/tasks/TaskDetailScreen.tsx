@@ -1,10 +1,11 @@
 import React from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getPublicTask } from "../../api/tasks";
+import { getPublicTask, withdrawTaskApplication } from "../../api/tasks";
 import { jobLengthLabel } from "../../constants/jobLength";
 import { inviteMember } from "../../api/groups";
+import { useAuth } from "../../context/AuthContext";
 import PhotoGallery from "../../components/PhotoGallery";
 import { colors, radii, shadows, spacing, type } from "../../theme";
 
@@ -26,6 +27,8 @@ export default function TaskDetailScreen({ route, navigation }: any) {
     groupIdToInviteTo?: string;
     invitedUserId?: string;
   };
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: task, isLoading } = useQuery({ queryKey: ["public-task", taskId], queryFn: () => getPublicTask(taskId) });
 
@@ -33,6 +36,23 @@ export default function TaskDetailScreen({ route, navigation }: any) {
     mutationFn: () => inviteMember(groupIdToInviteTo!, invitedUserId!, taskId),
     onSuccess: () => navigation.goBack(),
   });
+
+  const withdrawMutation = useMutation({
+    mutationFn: () => withdrawTaskApplication(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["public-task", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["my-applications"] });
+      navigation.goBack();
+    },
+  });
+
+  const confirmWithdraw = () => {
+    Alert.alert("Withdraw application?", "This frees up this task so you can submit it elsewhere.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Withdraw", style: "destructive", onPress: () => withdrawMutation.mutate() },
+    ]);
+  };
 
   if (isLoading || !task) {
     return (
@@ -43,6 +63,7 @@ export default function TaskDetailScreen({ route, navigation }: any) {
   }
 
   const canInvite = Boolean(groupIdToInviteTo && invitedUserId);
+  const isOwnTask = task.ownerId === profile?.id;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -58,6 +79,31 @@ export default function TaskDetailScreen({ route, navigation }: any) {
       </View>
 
       {task.ownerFirstName && <Text style={styles.owner}>Owned by {task.ownerFirstName}</Text>}
+
+      {isOwnTask && task.groupId && task.groupName && (
+        <TouchableOpacity
+          style={styles.submittedToRow}
+          onPress={() => navigation.navigate("GroupDetail", { groupId: task.groupId })}
+        >
+          <Ionicons name="people" size={15} color={colors.primary} />
+          <Text style={styles.submittedToText}>Submitted to {task.groupName}</Text>
+          <Ionicons name="chevron-forward" size={15} color={colors.primary} />
+        </TouchableOpacity>
+      )}
+
+      {isOwnTask && task.status === "SUBMITTED" && (
+        <TouchableOpacity
+          style={[styles.withdrawButton, withdrawMutation.isPending && styles.inviteButtonDisabled]}
+          onPress={confirmWithdraw}
+          disabled={withdrawMutation.isPending}
+        >
+          {withdrawMutation.isPending ? (
+            <ActivityIndicator color={colors.danger} />
+          ) : (
+            <Text style={styles.withdrawButtonText}>Withdraw application</Text>
+          )}
+        </TouchableOpacity>
+      )}
 
       <Text style={styles.label}>Description</Text>
       <Text style={styles.body}>{task.description}</Text>
@@ -122,6 +168,27 @@ const styles = StyleSheet.create({
   },
   categoryBadgeText: { fontSize: 12, fontWeight: "700", color: colors.primary },
   owner: { ...type.caption, marginTop: spacing.sm },
+  submittedToRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    alignSelf: "flex-start",
+  },
+  submittedToText: { color: colors.primary, fontWeight: "700", fontSize: 13 },
+  withdrawButton: {
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    marginTop: spacing.md,
+  },
+  withdrawButtonText: { color: colors.danger, fontWeight: "700", fontSize: 14 },
   label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: spacing.xs, marginTop: spacing.lg },
   body: { ...type.body, lineHeight: 21 },
   inviteButton: {
