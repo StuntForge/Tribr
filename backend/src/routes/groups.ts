@@ -305,6 +305,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     leaderId: group.leaderId,
     leaderName: group.leader.firstName,
     leaderTaskPhotoUrl: leaderTask?.photos[0]?.url ?? null,
+    leaderTaskCategory: leaderTask?.category.name ?? null,
     state: refreshedGroup.state,
     currentCycleNumber: group.currentCycleNumber,
     isLeader: group.leaderId === viewerId,

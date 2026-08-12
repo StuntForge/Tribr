@@ -33,8 +33,8 @@ export default function CompleteTaskScreen({ route, navigation }: any) {
       queryClient.invalidateQueries({ queryKey: ["group", groupId] });
       queryClient.invalidateQueries({ queryKey: ["my-groups"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      Alert.alert("Task completed", `"${taskName}" is marked complete. Ratings stay hidden until the cycle ends.`, [
-        { text: "OK", onPress: () => navigation.goBack() },
+      Alert.alert("Task completed", `"${taskName}" is marked complete.`, [
+        { text: "OK", onPress: () => navigation.navigate("GroupDetail", { groupId }) },
       ]);
     },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
@@ -63,7 +63,7 @@ export default function CompleteTaskScreen({ route, navigation }: any) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Complete "{taskName}"</Text>
-      <Text style={styles.subtitle}>Rate everyone who confirmed availability. This stays hidden until the cycle ends.</Text>
+      <Text style={styles.subtitle}>Rate everyone who confirmed availability.</Text>
 
       {attendees?.length === 0 && <Text style={styles.hint}>Nobody confirmed availability for this task.</Text>}
 

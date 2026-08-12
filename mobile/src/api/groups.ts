@@ -80,6 +80,7 @@ export interface GroupDetail {
   leaderId: string;
   leaderName: string | null;
   leaderTaskPhotoUrl: string | null;
+  leaderTaskCategory: string | null;
   state: GroupState;
   currentCycleNumber: number;
   isLeader: boolean;

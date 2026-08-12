@@ -24,6 +24,7 @@ import TaskSelectRow from "../../components/TaskSelectRow";
 import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
 import { useToast } from "../../components/Toast";
+import { categoryThumbnail } from "../../constants/categoryThumbnails";
 import { colors, radii, shadows, spacing, type } from "../../theme";
 
 const STATE_LABEL: Record<string, string> = {
@@ -160,6 +161,9 @@ export default function GroupDetailScreen({ route, navigation }: any) {
       extraScrollHeight={24}
     >
       <View style={styles.heroCard}>
+        {categoryThumbnail(group.leaderTaskCategory) && (
+          <Image source={categoryThumbnail(group.leaderTaskCategory)} style={styles.heroCategoryBadge} resizeMode="contain" />
+        )}
         <View style={styles.heroTopRow}>
           {group.leaderTaskPhotoUrl ? (
             <Image source={{ uri: group.leaderTaskPhotoUrl }} style={styles.heroPhoto} />
@@ -650,8 +654,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
+    position: "relative",
     ...shadows.card,
   },
+  heroCategoryBadge: { position: "absolute", top: spacing.sm, right: spacing.sm, width: 36, height: 36, zIndex: 1 },
   heroTopRow: { flexDirection: "row", gap: spacing.md },
   heroPhoto: { width: 92, height: 92, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
   heroPhotoFallback: { alignItems: "center", justifyContent: "center" },
