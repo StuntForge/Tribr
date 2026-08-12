@@ -6,6 +6,7 @@ import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/n
 import { computeRatingSummary, revealCycleRatings } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
 import { deleteCloudinaryImage } from "../services/cloudinary";
+import { findProfanity } from "../services/profanity";
 import { JOB_LENGTHS, JOB_LENGTH_RANK } from "./tasks";
 
 // 10.x - a completed task's photos have served their purpose (leader/members
@@ -635,6 +636,12 @@ router.post("/groups", async (req, res) => {
   const parsed = createGroupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const input = parsed.data;
+
+  const badWords = findProfanity(input.name, input.description);
+  if (badWords.length > 0) {
+    return res.status(400).json({ error: `Please remove this language before submitting: ${badWords.join(", ")}` });
+  }
+
   if (input.sizeMin > input.sizeMax) {
     return res.status(400).json({ error: "Minimum group size can't be greater than the maximum." });
   }
@@ -714,6 +721,11 @@ router.put("/groups/:id", async (req, res) => {
   }
   const parsed = updateGroupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const badWords = findProfanity(parsed.data.name, parsed.data.description);
+  if (badWords.length > 0) {
+    return res.status(400).json({ error: `Please remove this language before submitting: ${badWords.join(", ")}` });
+  }
 
   const updated = await prisma.group.update({ where: { id: group.id }, data: parsed.data });
   if (updated.sizeMin > updated.sizeMax) {

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { findProfanity } from "../services/profanity";
 
 const router = Router();
 router.use(requireAuth);
@@ -195,6 +196,11 @@ router.post("/tasks", async (req, res) => {
   }
   const { name, categoryId, description, jobLength, location, notes, isDraft } = parsed.data;
 
+  const badWords = findProfanity(name, description, notes);
+  if (badWords.length > 0) {
+    return res.status(400).json({ error: `Please remove this language before submitting: ${badWords.join(", ")}` });
+  }
+
   const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
   const category = await prisma.jobCategory.findUnique({ where: { id: categoryId } });
   if (!category) return res.status(400).json({ error: "Unknown job category." });
@@ -266,6 +272,11 @@ router.put("/tasks/:id", async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
   const { location, ...rest } = parsed.data;
+
+  const badWords = findProfanity(rest.name, rest.description, rest.notes);
+  if (badWords.length > 0) {
+    return res.status(400).json({ error: `Please remove this language before submitting: ${badWords.join(", ")}` });
+  }
 
   if (rest.categoryId) {
     const category = await prisma.jobCategory.findUnique({ where: { id: rest.categoryId } });
