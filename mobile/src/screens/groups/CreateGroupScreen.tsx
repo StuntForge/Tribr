@@ -274,9 +274,11 @@ export default function CreateGroupScreen({ route, navigation }: any) {
         <FieldLabel icon="people-circle" label="Tribe size" />
         <Text style={styles.hint}>Minimum {SIZE_MIN}, maximum {SIZE_MAX} members.</Text>
         <View style={styles.ageRow}>
-          <NumberSelect label="Minimum" options={SIZE_OPTIONS} value={sizeMin} onChange={setSizeMin} />
+          {/* Each picker only offers values that keep min <= max, so an
+              invalid combination can't be selected in the first place. */}
+          <NumberSelect label="Minimum" options={SIZE_OPTIONS.filter((v) => v <= sizeMax)} value={sizeMin} onChange={setSizeMin} />
           <Text style={styles.ageSeparator}>–</Text>
-          <NumberSelect label="Maximum" options={SIZE_OPTIONS} value={sizeMax} onChange={setSizeMax} />
+          <NumberSelect label="Maximum" options={SIZE_OPTIONS.filter((v) => v >= sizeMin)} value={sizeMax} onChange={setSizeMax} />
         </View>
 
         <View style={styles.switchRow}>

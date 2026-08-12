@@ -127,6 +127,53 @@ export async function forfeitExpiredActiveTask(groupId: string) {
   }
 }
 
+// 11.x - a Fixed Date Social Tribe's date is locked in at creation, unlike
+// Work's rolling 2-week window. If it's still RECRUITING/READY (never
+// reached enough members to start) once that date arrives, the planned
+// activity can no longer happen - auto-cancel rather than leaving it open
+// for recruitment against a date that's already passed. A Tribe that DID
+// start (state WORKING) is untouched here even past its date - that's the
+// normal "record attendance" flow, not a cancellation.
+async function disbandIfExpiredFixedDateSocial(group: {
+  id: string;
+  name: string;
+  tribeType: string;
+  dateType: string | null;
+  state: string;
+  fixedDate: Date | null;
+}) {
+  if (group.tribeType !== "SOCIAL" || group.dateType !== "FIXED") return;
+  if (!["RECRUITING", "READY"].includes(group.state)) return;
+  if (!group.fixedDate || group.fixedDate >= new Date()) return;
+
+  await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+  await postSystemMessage(group.id, "This Tribe's date passed without enough members - it's been automatically cancelled.");
+  await notifyGroupMembers(
+    group.id,
+    "SOCIAL_TRIBE_EXPIRED",
+    "Tribe cancelled",
+    `${group.name}'s date passed before enough members joined, so it's been cancelled.`
+  );
+}
+
+// Scoped check for one group - called wherever a specific Tribe is viewed,
+// mirroring forfeitExpiredActiveTask's per-group lazy-resolve pattern.
+export async function resolveExpiredFixedDateSocialTribe(groupId: string) {
+  const group = await prisma.group.findUnique({ where: { id: groupId } });
+  if (group) await disbandIfExpiredFixedDateSocial(group);
+}
+
+// Bulk sweep for listing endpoints (browse, mine) that return many groups
+// at once rather than one specific group.
+export async function disbandExpiredFixedDateSocialTribes() {
+  const candidates = await prisma.group.findMany({
+    where: { tribeType: "SOCIAL", dateType: "FIXED", state: { in: ["RECRUITING", "READY"] }, fixedDate: { lt: new Date() } },
+  });
+  for (const group of candidates) {
+    await disbandIfExpiredFixedDateSocial(group);
+  }
+}
+
 // Release a task back to the owner's personal library (3.12, 4.6, 6.13).
 async function releaseTask(taskId: string, status: "AVAILABLE" = "AVAILABLE") {
   await prisma.task.update({
@@ -196,6 +243,7 @@ async function resolveDissolutionVoteIfDue(vote: {
 
 async function serializeGroupDetail(groupId: string, viewerId: string) {
   await forfeitExpiredActiveTask(groupId);
+  await resolveExpiredFixedDateSocialTribe(groupId);
 
   const group = await prisma.group.findUnique({
     where: { id: groupId },
@@ -390,6 +438,8 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
 }
 
 router.get("/groups/mine", async (req, res) => {
+  await disbandExpiredFixedDateSocialTribes();
+
   const memberships = await prisma.groupMember.findMany({
     where: { userId: req.userId, status: "ACTIVE" },
     include: { group: true },
@@ -446,6 +496,8 @@ router.get("/me/group-history", async (req, res) => {
 // only; the other filters are silently ignored for them rather than erroring,
 // since the mobile UI simply won't offer those controls to a free account.
 router.get("/groups/browse", async (req, res) => {
+  await disbandExpiredFixedDateSocialTribes();
+
   const viewer = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
   const isSubscriber = viewer.subscriptionTier === "SUBSCRIBER";
 
