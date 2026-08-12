@@ -400,7 +400,13 @@ export interface MyInvitation {
   group: {
     id: string;
     name: string;
+    tribeType: TribeType;
     categories: string[];
+    socialCategory: string | null;
+    dateType: "FIXED" | "SCHEDULE_TOGETHER" | null;
+    fixedDate: string | null;
+    fixedStartTime: string | null;
+    locationLabel: string | null;
     leaderName: string | null;
     leaderIsPro: boolean;
     memberCount: number;

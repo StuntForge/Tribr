@@ -15,6 +15,7 @@ import ProBadge from "../../components/ProBadge";
 import SegmentedTabs from "../../components/SegmentedTabs";
 import SortSelect from "../../components/SortSelect";
 import { useToast } from "../../components/Toast";
+import { formatSocialEventDate } from "../../components/CalendarPicker";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 type SortKey = "distance" | "members";
@@ -138,7 +139,15 @@ export default function MyInvitationsScreen({ route, navigation }: any) {
                 pendingDecline={respondMutation.isPending && respondMutation.variables?.id === item.id && !respondMutation.variables.accept}
                 onAccept={() => respondMutation.mutate({ id: item.id, accept: true })}
                 onDecline={() => respondMutation.mutate({ id: item.id, accept: false })}
-                onViewTasks={() => navigation.navigate("GroupCurrentTasks", { groupId: item.group.id, groupName: item.group.name })}
+                // A Social Tribe has no "current tasks" concept at all -
+                // send those straight to the full Tribe page instead (it's
+                // viewable pre-membership while the Tribe is still
+                // recruiting, same as Work's preview screen is meant to be).
+                onViewTasks={() =>
+                  item.group.tribeType === "SOCIAL"
+                    ? navigation.navigate("GroupDetail", { groupId: item.group.id })
+                    : navigation.navigate("GroupCurrentTasks", { groupId: item.group.id, groupName: item.group.name })
+                }
               />
             )}
           />
@@ -209,7 +218,15 @@ function InvitationCard({
         <DetailRow icon="calendar" label={`Age: ${ageRange}`} />
         {group.minRating != null && <DetailRow icon="star" label={`${group.minRating.toFixed(1)}★ minimum rating`} />}
         {group.verifiedOnly && <DetailRow icon="checkmark-circle" label="Verified members only" />}
-        <DetailRow icon="pricetags" label={group.categories.length > 0 ? group.categories.join(", ") : "Any category"} />
+        {group.tribeType === "SOCIAL" ? (
+          <>
+            <DetailRow icon="pricetags" label={group.socialCategory ?? "Social"} />
+            <DetailRow icon="calendar" label={formatSocialEventDate(group)} />
+            {group.locationLabel && <DetailRow icon="location" label={group.locationLabel} />}
+          </>
+        ) : (
+          <DetailRow icon="pricetags" label={group.categories.length > 0 ? group.categories.join(", ") : "Any category"} />
+        )}
       </View>
 
       {invitation.suggestedTask && (

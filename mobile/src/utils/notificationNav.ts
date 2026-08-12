@@ -1,5 +1,6 @@
 export interface NotificationNavExtra {
   groupId?: string;
+  groupName?: string;
   taskId?: string;
   taskName?: string;
   voteId?: string;
@@ -19,7 +20,7 @@ export interface ResolvedNotificationRoute {
 export function resolveNotificationRoute(rawType: string | undefined, extra: NotificationNavExtra = {}): ResolvedNotificationRoute | null {
   if (!rawType) return null;
   const type = rawType.split(":")[0];
-  const { groupId, taskId, taskName, voteId } = extra;
+  const { groupId, groupName, taskId, taskName, voteId } = extra;
 
   switch (type) {
     case "GROUP_INVITATION":
@@ -44,6 +45,29 @@ export function resolveNotificationRoute(rawType: string | undefined, extra: Not
     case "PICK_DATE":
     case "SUBMIT_AVAILABILITY":
       if (groupId && taskId) return { tab: "Groups", screen: "TaskSchedule", params: { groupId, taskId, taskName: taskName ?? "" } };
+      return groupId ? { tab: "Groups", screen: "GroupDetail", params: { groupId } } : null;
+
+    // Social Tribe equivalents of the scheduling group above - same
+    // destination screen (SocialSchedule mirrors TaskSchedule), just no
+    // per-task id since a Social Tribe has one shared activity, not a task.
+    case "SOCIAL_SCHEDULING_OPENED":
+    case "SOCIAL_AVAILABILITY_NEEDED":
+    case "SOCIAL_DATE_SELECTED":
+    case "SOCIAL_PROPOSE_DATES":
+    case "SOCIAL_PICK_DATE":
+    case "SOCIAL_SUBMIT_AVAILABILITY":
+      return groupId ? { tab: "Groups", screen: "SocialSchedule", params: { groupId, groupName: groupName ?? "" } } : null;
+
+    // Only the leader-facing "you need to record attendance" case actually
+    // has something to do on SocialAttendance - once it's already recorded,
+    // there's nothing left to submit there (a non-leader tapping "Tribe
+    // complete" just wants to see the Tribe, not a dead-end attendance form).
+    case "SOCIAL_ATTENDANCE_PENDING":
+      return groupId ? { tab: "Groups", screen: "SocialAttendance", params: { groupId, groupName: groupName ?? "" } } : null;
+
+    case "SOCIAL_ATTENDANCE_RECORDED":
+    case "SOCIAL_TRIBE_STARTED":
+    case "SOCIAL_TRIBE_EXPIRED":
       return groupId ? { tab: "Groups", screen: "GroupDetail", params: { groupId } } : null;
 
     case "RATE_HOST_PENDING":

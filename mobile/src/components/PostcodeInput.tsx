@@ -12,13 +12,13 @@ export interface ResolvedLocation {
   lng: number;
 }
 
-// Live address/place autocomplete backed by Mapbox (proxied through the
-// backend - see api/geocode.ts), verified against a real place database so
-// results land in the right spot on the map. Prop names are kept from the
-// original UK-postcode-only version (postcodes.io) rather than renamed,
-// since every screen that uses this component only cares about the
-// resolved {label, lat, lng} - swapping the search provider needed no
-// changes anywhere else.
+// Live address/place autocomplete backed by OpenStreetMap's Nominatim
+// (proxied through the backend - see api/geocode.ts), verified against a
+// real place database so results land in the right spot on the map. Prop
+// names are kept from the original UK-postcode-only version (postcodes.io)
+// rather than renamed, since every screen that uses this component only
+// cares about the resolved {label, lat, lng} - swapping the search provider
+// needed no changes anywhere else.
 export default function PostcodeInput({
   postcode,
   onChangePostcode,
@@ -32,12 +32,21 @@ export default function PostcodeInput({
 }) {
   const [suggestions, setSuggestions] = useState<{ label: string; lat: number; lng: number }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [searchedEmpty, setSearchedEmpty] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guards against a slow, stale search response landing after the user has
   // already picked a suggestion or kept typing past it.
   const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -45,18 +54,34 @@ export default function PostcodeInput({
     if (query.length < 3) {
       setSuggestions([]);
       setSearching(false);
+      setSearchFailed(false);
+      setSearchedEmpty(false);
       return;
     }
     setSearching(true);
+    setSearchFailed(false);
+    setSearchedEmpty(false);
     const requestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(async () => {
+      // The backend is on Render's free tier, which can take 30-50s to wake
+      // from a cold start - give it real time to respond rather than making
+      // the search look broken, but don't hang forever either.
+      const timeoutController = new AbortController();
+      const timeout = setTimeout(() => timeoutController.abort(), 45000);
       try {
-        const results = await searchPlaces(query);
-        if (requestIdRef.current === requestId) setSuggestions(results);
+        const results = await searchPlaces(query, timeoutController.signal);
+        clearTimeout(timeout);
+        if (!mountedRef.current || requestIdRef.current !== requestId) return;
+        setSuggestions(results);
+        setSearchedEmpty(results.length === 0);
       } catch {
-        if (requestIdRef.current === requestId) setSuggestions([]);
+        clearTimeout(timeout);
+        if (!mountedRef.current || requestIdRef.current !== requestId) return;
+        setSuggestions([]);
+        setSearchFailed(true);
       } finally {
-        if (requestIdRef.current === requestId) setSearching(false);
+        clearTimeout(timeout);
+        if (mountedRef.current && requestIdRef.current === requestId) setSearching(false);
       }
     }, 350);
     return () => {
@@ -68,6 +93,8 @@ export default function PostcodeInput({
   const selectSuggestion = (s: { label: string; lat: number; lng: number }) => {
     requestIdRef.current++; // invalidate any in-flight search
     setSuggestions([]);
+    setSearchFailed(false);
+    setSearchedEmpty(false);
     setError(null);
     onChangePostcode(s.label);
     onResolved({ postcode: s.label, label: s.label, lat: s.lat, lng: s.lng });
@@ -120,6 +147,12 @@ export default function PostcodeInput({
       </TouchableOpacity>
 
       {searching && <Text style={styles.hint}>Searching…</Text>}
+      {!searching && searchFailed && (
+        <Text style={styles.error}>Couldn't reach the location search. Check your connection and keep typing to retry.</Text>
+      )}
+      {!searching && !searchFailed && searchedEmpty && (
+        <Text style={styles.hint}>No matching places found - try a different spelling or a nearby town.</Text>
+      )}
 
       {suggestions.length > 0 && (
         <View style={styles.suggestionList}>

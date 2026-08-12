@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCommittedMembers, recordSocialAttendance, SocialAttendanceEntry, SocialAttendanceStatus } from "../../api/socialSchedule";
 import { colors, spacing } from "../../theme";
@@ -12,10 +13,19 @@ export default function SocialAttendanceScreen({ route, navigation }: any) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const { data: members, isLoading } = useQuery({
+  const { data: members, isLoading, isError, refetch } = useQuery({
     queryKey: ["social-committed-members", groupId],
     queryFn: () => getCommittedMembers(groupId),
   });
+
+  // Reusing an already-mounted instance of this screen (e.g. tapping back
+  // into it, or a notification deep-link) can otherwise show whatever was
+  // cached from before who's committed changed.
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const [statuses, setStatuses] = useState<Record<string, SocialAttendanceStatus>>({});
   const getStatus = (userId: string): SocialAttendanceStatus => statuses[userId] ?? "ATTENDED";
@@ -38,6 +48,17 @@ export default function SocialAttendanceScreen({ route, navigation }: any) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.hint}>Couldn't load who's committed to this Tribe's event.</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -103,4 +124,6 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, marginBottom: spacing.md },
   primaryButton: { backgroundColor: colors.primary, borderRadius: 10, padding: spacing.md, alignItems: "center", marginTop: spacing.md },
   primaryButtonText: { color: "#fff", fontWeight: "600" },
+  retryButton: { marginTop: spacing.md, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
+  retryButtonText: { color: "#fff", fontWeight: "600" },
 });

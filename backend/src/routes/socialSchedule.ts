@@ -1,9 +1,11 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
 import { PROPOSAL_WINDOW_DAYS, dayString, withinProposalWindow } from "../services/scheduleWindow";
+import { resolveExpiredSocialScheduleWindow } from "./groups";
 
 // 11.x - Social Tribes "Schedule Together" scheduling. A deliberate mirror
 // of schedule.ts's propose/respond/submit/confirm flow, but keyed by
@@ -35,9 +37,20 @@ async function allMembersSubmitted(proposalId: string, requiredIds: string[]): P
 }
 
 async function requireSocialWorkingGroup(groupId: string) {
+  // Resolve first so a stale WORKING group whose 2-week scheduling window
+  // has lapsed with no date confirmed can't accept new proposals/responses -
+  // it may have just been auto-cancelled as of this call.
+  await resolveExpiredSocialScheduleWindow(groupId);
+
   const group = await prisma.group.findUnique({ where: { id: groupId } });
   if (!group || group.tribeType !== "SOCIAL") return { error: "Not a Social Tribe." as const };
-  if (group.state !== "WORKING") return { error: "This Tribe hasn't started yet." as const };
+  if (group.state !== "WORKING") {
+    const message =
+      group?.state === "RECRUITING" || group?.state === "READY"
+        ? "This Tribe hasn't started yet."
+        : "This Tribe isn't currently active.";
+    return { error: message };
+  }
   if (group.dateType !== "SCHEDULE_TOGETHER") return { error: "This Tribe's date is fixed - there's nothing to schedule." as const };
   return { group };
 }
@@ -134,24 +147,36 @@ router.post("/groups/:id/social/propose-dates", async (req, res) => {
     return res.status(400).json({ error: "Dates can only be picked within 2 weeks of this Tribe starting." });
   }
 
-  const proposal = await prisma.socialEventProposal.create({
-    data: {
-      groupId: ctx.group.id,
-      options: {
-        create: parsed.data.options.map((o) => ({
-          date: new Date(o.date),
-          allDay: o.allDay,
-          startTime: o.allDay ? null : o.startTime,
-          endTime: o.allDay ? null : o.endTime,
-        })),
+  // SocialEventProposal.groupId is unique, so a second concurrent request
+  // past the existingProposal check above (e.g. a flaky-network retry) would
+  // otherwise throw an uncaught Prisma error instead of a clean 400.
+  let proposal;
+  try {
+    proposal = await prisma.socialEventProposal.create({
+      data: {
+        groupId: ctx.group.id,
+        options: {
+          create: parsed.data.options.map((o) => ({
+            date: new Date(o.date),
+            allDay: o.allDay,
+            startTime: o.allDay ? null : o.startTime,
+            endTime: o.allDay ? null : o.endTime,
+          })),
+        },
       },
-    },
-    include: { options: true },
-  });
+      include: { options: true },
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return res.status(400).json({ error: "Dates have already been proposed - use a revision to add more." });
+    }
+    throw e;
+  }
 
   await postSystemMessage(ctx.group.id, "New dates proposed. Let the Tribe know your availability.");
   await notifyGroupMembers(ctx.group.id, "SOCIAL_SCHEDULING_OPENED", "New dates proposed", `New possible dates for ${ctx.group.name}.`, {
     excludeUserId: req.userId,
+    extra: { groupName: ctx.group.name },
   });
 
   res.status(201).json({ id: proposal.id, options: proposal.options });
@@ -202,6 +227,7 @@ router.post("/groups/:id/social/revise-dates", async (req, res) => {
   await postSystemMessage(ctx.group.id, "The leader added more date options. Please resubmit your availability.");
   await notifyGroupMembers(ctx.group.id, "SOCIAL_SCHEDULING_OPENED", "Dates updated", `${ctx.group.name}: more date options were added. Resubmit your availability.`, {
     excludeUserId: req.userId,
+    extra: { groupName: ctx.group.name },
   });
 
   res.json({ ok: true });
@@ -288,7 +314,7 @@ router.post("/groups/:id/social/availability-submit", async (req, res) => {
       "SOCIAL_AVAILABILITY_NEEDED",
       "Everyone's responded",
       `Everyone's submitted their availability for ${group.name}. Pick a date or revise the options.`,
-      { groupId: group.id }
+      { groupId: group.id, groupName: group.name }
     );
   }
 
@@ -337,6 +363,7 @@ router.post("/groups/:id/social/confirm", async (req, res) => {
   await postSystemMessage(ctx.group.id, `Date confirmed for ${dateLabel}.`);
   await notifyGroupMembers(ctx.group.id, "SOCIAL_DATE_SELECTED", "Date confirmed", `${ctx.group.name} is happening on ${dateLabel}.`, {
     onlyUserIds: availableResponses.map((r) => r.userId),
+    extra: { groupName: ctx.group.name },
   });
 
   res.json({ ok: true });
@@ -348,7 +375,7 @@ router.post("/groups/:id/social/confirm", async (req, res) => {
 // Together Tribe. The leader is always included either way, mirroring how
 // GET /me/home-summary unconditionally includes a Work task's owner
 // regardless of their own availability responses.
-async function getCommittedUserIds(
+export async function getCommittedUserIds(
   group: { id: string; leaderId: string; dateType: string | null },
   socialEvent: { confirmedDate: Date }
 ): Promise<Set<string>> {
@@ -384,12 +411,20 @@ router.get("/groups/:id/social/committed-members", async (req, res) => {
 });
 
 const attendanceSchema = z.object({
-  attendance: z.array(
-    z.object({
-      userId: z.string().min(1),
-      status: z.enum(["ATTENDED", "NO_SHOW", "VALID_REASON"]),
-    })
-  ),
+  attendance: z
+    .array(
+      z.object({
+        userId: z.string().min(1),
+        status: z.enum(["ATTENDED", "NO_SHOW", "VALID_REASON"]),
+      })
+    )
+    // A duplicate userId would pass the committed-members coverage check
+    // below (computed via a Set) but then violate the @@unique([groupId,
+    // userId]) constraint on insert - rejected here with a clean 400 instead
+    // of letting it fail as an unhandled DB error.
+    .refine((a) => new Set(a.map((x) => x.userId)).size === a.length, {
+      message: "Each member can only appear once in the attendance list.",
+    }),
 });
 
 // Leader records attendance once the confirmed event date has passed - no
@@ -421,10 +456,15 @@ router.post("/groups/:id/social/attendance", async (req, res) => {
     return res.status(400).json({ error: "Attendance must cover exactly the committed members." });
   }
 
-  await prisma.socialAttendance.createMany({
-    data: parsed.data.attendance.map((a) => ({ groupId: group.id, userId: a.userId, outcome: a.status })),
-  });
-  await prisma.group.update({ where: { id: group.id }, data: { state: "COMPLETED" } });
+  // Transactional so a crash/failure between the two writes can't leave the
+  // group permanently wedged in WORKING with attendance already recorded -
+  // the endpoint's own re-entry guard above would then reject every retry.
+  await prisma.$transaction([
+    prisma.socialAttendance.createMany({
+      data: parsed.data.attendance.map((a) => ({ groupId: group.id, userId: a.userId, outcome: a.status })),
+    }),
+    prisma.group.update({ where: { id: group.id }, data: { state: "COMPLETED" } }),
+  ]);
 
   await postSystemMessage(group.id, "Attendance recorded - this Tribe is complete. Leave whenever you're ready to wrap up.");
   await notifyGroupMembers(group.id, "SOCIAL_ATTENDANCE_RECORDED", "Tribe complete", `${group.name} is complete.`, {

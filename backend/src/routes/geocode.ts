@@ -1,12 +1,15 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
+import { throttledNominatimFetch } from "../services/geocode";
 
 const router = Router();
 router.use(requireAuth);
 
-// A descriptive User-Agent is required by Nominatim's usage policy (same
-// header used by services/geocode.ts's single-result fallback lookup).
-const USER_AGENT = "Tribr/1.0 (dev testing; contact via app)";
+// Short-lived cache so repeat keystrokes on the same query (or two users
+// searching the same place) don't each cost a slot in Nominatim's shared
+// 1 req/sec budget (see services/geocode.ts's throttledNominatimFetch).
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const searchCache = new Map<string, { at: number; results: { label: string; lat: number; lng: number }[] }>();
 
 interface NominatimResult {
   display_name: string;
@@ -22,18 +25,24 @@ interface NominatimResult {
 // service as a one-shot fallback elsewhere in the app.
 router.get("/geocode/search", async (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-  if (!q) return res.json([]);
+  if (q.length < 3) return res.json([]);
+
+  const cacheKey = q.toLowerCase();
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < SEARCH_CACHE_TTL_MS) {
+    return res.json(cached.results);
+  }
 
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
-    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    const response = await throttledNominatimFetch(url);
     if (!response.ok) return res.json([]);
-    const results = (await response.json()) as NominatimResult[];
-    res.json(
-      results
-        .map((r) => ({ label: r.display_name, lat: Number(r.lat), lng: Number(r.lon) }))
-        .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng))
-    );
+    const raw = (await response.json()) as NominatimResult[];
+    const results = raw
+      .map((r) => ({ label: r.display_name, lat: Number(r.lat), lng: Number(r.lon) }))
+      .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+    searchCache.set(cacheKey, { at: Date.now(), results });
+    res.json(results);
   } catch {
     res.json([]);
   }
@@ -48,7 +57,7 @@ router.get("/geocode/reverse", async (req, res) => {
 
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
-    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    const response = await throttledNominatimFetch(url);
     if (!response.ok) return res.json(null);
     const result = (await response.json()) as NominatimResult | { error?: string };
     if (!("display_name" in result)) return res.json(null);

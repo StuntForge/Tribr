@@ -121,6 +121,7 @@ export interface ActionItem {
   body: string;
   createdAt: Date;
   groupId?: string;
+  groupName?: string;
   taskId?: string;
   taskName?: string;
   voteId?: string;
@@ -226,6 +227,7 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
               body: `Propose dates for ${m.group.name}.`,
               createdAt: m.group.socialScheduleWindowStart ?? m.group.updatedAt,
               groupId: m.groupId,
+              groupName: m.group.name,
             });
           } else {
             const requiredIds = (await prisma.groupMember.findMany({ where: { groupId: m.groupId, status: "ACTIVE" } }))
@@ -240,6 +242,7 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
                 body: `Everyone's responded for ${m.group.name} - pick a date or revise.`,
                 createdAt: proposal.createdAt,
                 groupId: m.groupId,
+                groupName: m.group.name,
               });
             }
           }
@@ -253,6 +256,7 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
               body: `Let ${m.group.name} know when you're free.`,
               createdAt: proposal.createdAt,
               groupId: m.groupId,
+              groupName: m.group.name,
             });
           }
         }
@@ -268,6 +272,7 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
             body: `Record who attended ${m.group.name}.`,
             createdAt: socialEvent.confirmedDate,
             groupId: m.groupId,
+            groupName: m.group.name,
           });
         }
       }

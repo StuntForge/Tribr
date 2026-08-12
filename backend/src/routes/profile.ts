@@ -79,14 +79,12 @@ router.get("/me", async (req, res) => {
     include: { dietary: true, photos: true },
   });
   if (!user) return res.status(404).json({ error: "Account not found." });
-  res.json(
-    serializePrivateProfile(
-      user,
-      await computeRatingSummary(user.id),
-      await countCompletedTasks(user.id),
-      await computeSocialReliability(user.id)
-    )
-  );
+  const [ratingSummary, completedTasks, socialReliability] = await Promise.all([
+    computeRatingSummary(user.id),
+    countCompletedTasks(user.id),
+    computeSocialReliability(user.id),
+  ]);
+  res.json(serializePrivateProfile(user, ratingSummary, completedTasks, socialReliability));
 });
 
 // Sub-score breakdown behind the Home screen's headline rating - fetched on
@@ -160,13 +158,13 @@ router.put("/me", async (req, res) => {
     include: { dietary: true, photos: true },
   });
 
+  const [ratingSummary, completedTasks, socialReliability] = await Promise.all([
+    computeRatingSummary(updated.id),
+    countCompletedTasks(updated.id),
+    computeSocialReliability(updated.id),
+  ]);
   res.json(
-    serializePrivateProfile(
-      updated,
-      await computeRatingSummary(updated.id),
-      await countCompletedTasks(updated.id),
-      await computeSocialReliability(updated.id)
-    )
+    serializePrivateProfile(updated, ratingSummary, completedTasks, socialReliability)
   );
 });
 
@@ -246,24 +244,29 @@ router.get("/users/:id", async (req, res) => {
   });
   if (!target) return res.status(404).json({ error: "User not found." });
 
-  const blocked = await prisma.block.findFirst({
-    where: {
-      OR: [
-        { blockerId: req.userId, blockedId: target.id },
-        { blockerId: target.id, blockedId: req.userId },
-      ],
-    },
-  });
+  const [blocked, requester] = await Promise.all([
+    prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: req.userId, blockedId: target.id },
+          { blockerId: target.id, blockedId: req.userId },
+        ],
+      },
+    }),
+    prisma.user.findUnique({ where: { id: req.userId } }),
+  ]);
   if (blocked) return res.status(404).json({ error: "User not found." });
 
   let approxDistanceMiles: number | null = null;
-  const requester = await prisma.user.findUnique({ where: { id: req.userId } });
   if (requester?.locationLat != null && requester.locationLng != null && target.locationLat != null && target.locationLng != null) {
     approxDistanceMiles = haversineMiles(requester.locationLat, requester.locationLng, target.locationLat, target.locationLng);
   }
 
-  const ratings = await computeRatingSummary(target.id);
-  const socialReliability = await computeSocialReliability(target.id);
+  const [ratings, socialReliability, completedTasksCount] = await Promise.all([
+    computeRatingSummary(target.id),
+    computeSocialReliability(target.id),
+    countCompletedTasks(target.id),
+  ]);
 
   res.json({
     id: target.id,
@@ -279,7 +282,7 @@ router.get("/users/:id", async (req, res) => {
     workerRating: ratings.workerRating,
     hostRating: ratings.hostRating,
     completedCycles: ratings.completedCycles,
-    completedTasksCount: await countCompletedTasks(target.id),
+    completedTasksCount,
     // Social Reliability (11.13) - always shown separately from the star
     // rating above, never blended into it.
     socialReliability,

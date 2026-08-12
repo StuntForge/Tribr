@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { forfeitExpiredActiveTask, getCurrentCycle, parseOrder, requireActiveCycle } from "./groups";
+import { getCommittedUserIds } from "./socialSchedule";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
 import { PROPOSAL_WINDOW_DAYS, dayString, withinProposalWindow } from "../services/scheduleWindow";
 
@@ -44,25 +45,41 @@ router.get("/me/home-summary", async (req, res) => {
     cycleNumber: m.group.currentCycleNumber,
   }));
 
-  const pendingApplicationsToReview = await prisma.groupApplication.count({
-    where: { status: "PENDING", group: { leaderId: req.userId, id: { in: memberships.map((m) => m.groupId) } } },
-  });
-
   const groupIds = memberships.map((m) => m.groupId);
-  const workDays = await prisma.workDay.findMany({
-    where: { task: { groupId: { in: groupIds } }, confirmedDate: { gte: new Date() } },
-    include: { task: { include: { group: true } } },
-    orderBy: { confirmedDate: "asc" },
-  });
+  const [pendingApplicationsToReview, workDays, socialEvents] = await Promise.all([
+    prisma.groupApplication.count({
+      where: { status: "PENDING", group: { leaderId: req.userId, id: { in: groupIds } } },
+    }),
+    prisma.workDay.findMany({
+      where: { task: { groupId: { in: groupIds } }, confirmedDate: { gte: new Date() } },
+      include: { task: { include: { group: true } } },
+      orderBy: { confirmedDate: "asc" },
+    }),
+    prisma.socialEvent.findMany({
+      where: { groupId: { in: groupIds }, confirmedDate: { gte: new Date() } },
+      include: { group: true },
+      orderBy: { confirmedDate: "asc" },
+    }),
+  ]);
 
-  const upcoming = [];
-  for (const wd of workDays) {
-    const isOwner = wd.task.ownerId === req.userId;
-    const available = await prisma.availabilityResponse.findFirst({
-      where: { userId: req.userId, available: true, dateOption: { proposal: { taskId: wd.taskId }, date: wd.confirmedDate } },
-    });
-    if (!isOwner && !available) continue;
-    upcoming.push({
+  // Batched in one query rather than one availabilityResponse lookup per
+  // workDay in a loop - this endpoint backs the Home screen, so an N+1 here
+  // scaled with how many upcoming work days a user has across all groups.
+  const availableResponses = await prisma.availabilityResponse.findMany({
+    where: {
+      userId: req.userId,
+      available: true,
+      dateOption: { proposal: { taskId: { in: workDays.map((wd) => wd.taskId) } } },
+    },
+    select: { dateOption: { select: { date: true, proposal: { select: { taskId: true } } } } },
+  });
+  const availableTaskDateKeys = new Set(
+    availableResponses.map((r) => `${r.dateOption.proposal.taskId}::${r.dateOption.date.getTime()}`)
+  );
+
+  const upcoming = workDays
+    .filter((wd) => wd.task.ownerId === req.userId || availableTaskDateKeys.has(`${wd.taskId}::${wd.confirmedDate!.getTime()}`))
+    .map((wd) => ({
       groupId: wd.task.groupId,
       groupName: wd.task.group?.name ?? "",
       taskId: wd.taskId,
@@ -71,22 +88,24 @@ router.get("/me/home-summary", async (req, res) => {
       allDay: wd.allDay,
       startTime: wd.startTime,
       endTime: wd.endTime,
-    });
-  }
-
-  const socialEvents = await prisma.socialEvent.findMany({
-    where: { groupId: { in: groupIds }, confirmedDate: { gte: new Date() } },
-    include: { group: true },
-    orderBy: { confirmedDate: "asc" },
-  });
-  const upcomingSocialEvents = socialEvents.map((e) => ({
-    groupId: e.groupId,
-    groupName: e.group.name,
-    confirmedDate: e.confirmedDate,
-    allDay: e.allDay,
-    startTime: e.startTime,
-    endTime: e.endTime,
-  }));
+    }));
+  // Only events the viewer is actually committed to (mirrors the Work
+  // filter above) - a Schedule Together member who marked themselves
+  // unavailable for the date the leader ended up confirming shouldn't see
+  // it as "Up next" on their Home screen.
+  const committedFlags = await Promise.all(
+    socialEvents.map(async (e) => (await getCommittedUserIds(e.group, e)).has(req.userId!))
+  );
+  const upcomingSocialEvents = socialEvents
+    .filter((_, i) => committedFlags[i])
+    .map((e) => ({
+      groupId: e.groupId,
+      groupName: e.group.name,
+      confirmedDate: e.confirmedDate,
+      allDay: e.allDay,
+      startTime: e.startTime,
+      endTime: e.endTime,
+    }));
 
   res.json({ activeGroups, pendingApplicationsToReview, upcomingWorkDays: upcoming, upcomingSocialEvents });
 });

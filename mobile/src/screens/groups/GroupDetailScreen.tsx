@@ -202,7 +202,6 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const canManageMembers = group.isLeader && ["RECRUITING", "READY"].includes(group.state);
   const canVoteKick = group.state === "WORKING" && (group.isMember || group.isLeader);
   const openKickVotes = kickVotes?.filter((v) => v.outcome == null) ?? [];
-  const isActiveState = group.state === "WORKING";
 
   return (
     <KeyboardAwareScrollView
@@ -254,6 +253,12 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                   : "Date: To be arranged"}
               </Text>
             )}
+            {/* Shown to prospective (non-member) applicants too, same as the
+                date above - both are what someone needs to decide whether to
+                apply, not member-only information. */}
+            {group.tribeType === "SOCIAL" && group.locationLabel && (
+              <Text style={styles.requirementMeta}>{group.locationLabel}</Text>
+            )}
             {(group.verifiedOnly || group.minRating != null || group.preferredGender || group.preferredAgeMin != null || group.preferredAgeMax != null) && (
               <Text style={styles.requirementMeta}>
                 Requires:{" "}
@@ -274,15 +279,12 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         <Text style={styles.heroDescription}>{group.description}</Text>
       </View>
 
-      {group.tribeType === "SOCIAL" && (group.isMember || group.isLeader) && (
+      {group.tribeType === "SOCIAL" &&
+        (group.isMember || group.isLeader) &&
+        group.state === "WORKING" &&
+        (group.dateType === "SCHEDULE_TOGETHER" || (group.socialEvent && new Date(group.socialEvent.confirmedDate) <= new Date())) && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Event details</Text>
-          {group.locationLabel && (
-            <View style={styles.eventDetailRow}>
-              <Ionicons name="location" size={16} color={colors.primary} />
-              <Text style={styles.eventDetailText}>{group.locationLabel}</Text>
-            </View>
-          )}
           {group.state === "WORKING" && group.dateType === "SCHEDULE_TOGETHER" && !group.socialEvent && (
             <TouchableOpacity
               style={styles.primaryButtonFull}
@@ -456,7 +458,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         )}
       </View>
 
-      {group.progress && group.progress.total > 0 && (group.state === "WORKING" || group.state === "COMPLETED") && (
+      {group.tribeType === "WORK" && group.progress && group.progress.total > 0 && (group.state === "WORKING" || group.state === "COMPLETED") && (
         <View style={styles.card}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Cycle progress</Text>
@@ -477,7 +479,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         </View>
       )}
 
-      {group.state === "WORKING" && group.queue.length > 0 && (
+      {group.tribeType === "WORK" && group.state === "WORKING" && group.queue.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Task order</Text>
           {group.queue.map((q, i) => (
@@ -511,7 +513,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         </View>
       )}
 
-      {myActiveQueueTask && (
+      {group.tribeType === "WORK" && myActiveQueueTask && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Your task is active</Text>
           {!myActiveQueueTask.workDayConfirmed && (
@@ -664,7 +666,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         )}
         <View style={styles.actionColumn}>
           {myActionItems
-            .filter((item) => item.type === "RATE_HOST_PENDING")
+            .filter((item) => item.type === "RATE_HOST")
             .map((item) => (
               <ActionRow
                 key={item.id}
@@ -702,7 +704,9 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               onPress={() => navigation.navigate("CompleteTribe", { groupId, groupName: group.name })}
             >
               <Ionicons name="checkmark-circle" size={16} color="#fff" />
-              <Text style={styles.primaryButtonFullText}>Work's done - leave the Tribe</Text>
+              <Text style={styles.primaryButtonFullText}>
+                {group.tribeType === "SOCIAL" ? "All done - leave the Tribe" : "Work's done - leave the Tribe"}
+              </Text>
             </TouchableOpacity>
           )}
           {!group.isLeader && group.isMember && ["RECRUITING", "READY"].includes(group.state) && (

@@ -29,6 +29,22 @@ export function formatTime12h(t: string): string {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+// Shared formatter for a Social Tribe's Fixed Date + time, used anywhere a
+// Social Tribe summary is shown (Browse Groups cards/markers, invitation
+// cards) so the display is identical everywhere rather than reimplemented
+// per screen.
+export function formatSocialEventDate(group: {
+  dateType?: string | null;
+  fixedDate?: string | Date | null;
+  fixedStartTime?: string | null;
+}): string {
+  if (group.dateType !== "FIXED" || !group.fixedDate) return "Date: To be arranged";
+  const d = new Date(group.fixedDate);
+  const dateLabel = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  if (!group.fixedStartTime) return dateLabel;
+  return `${dateLabel}, ${formatTime12h(group.fixedStartTime)}`;
+}
+
 export const TIME_OPTIONS: string[] = (() => {
   const times: string[] = [];
   for (let h = 7; h <= 19; h++) {

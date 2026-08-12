@@ -174,6 +174,61 @@ export async function disbandExpiredFixedDateSocialTribes() {
   }
 }
 
+// Mirrors forfeitExpiredActiveTask's safety net for a Schedule Together
+// Social Tribe: Work forfeits the one active task back to available once its
+// 2-week window lapses with no work day confirmed. A Social Tribe has no
+// smaller per-member unit to forfeit - the whole group's one shared plan is
+// what failed to materialize - so the equivalent rescue is to cancel the
+// whole Tribe, matching the tone/precedent of the Fixed-Date auto-cancel
+// above. Once a date HAS been confirmed (a SocialEvent exists), this leaves
+// the Tribe alone even past the window, exactly like Work leaves a task
+// alone once its work day is confirmed - the 48h dissolution vote remains
+// the fallback for "date confirmed but attendance never recorded", the same
+// residual gap Work Tribes have for "work day confirmed but never completed".
+async function cancelIfScheduleTogetherWindowExpired(group: {
+  id: string;
+  name: string;
+  tribeType: string;
+  dateType: string | null;
+  state: string;
+  socialScheduleWindowStart: Date | null;
+  updatedAt: Date;
+}) {
+  if (group.tribeType !== "SOCIAL" || group.dateType !== "SCHEDULE_TOGETHER" || group.state !== "WORKING") return;
+
+  const existingEvent = await prisma.socialEvent.findUnique({ where: { groupId: group.id } });
+  if (existingEvent) return;
+
+  const anchor = group.socialScheduleWindowStart ?? group.updatedAt;
+  const deadline = new Date(anchor.getTime() + PROPOSAL_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  if (new Date() <= deadline) return;
+
+  await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+  await postSystemMessage(group.id, "No date was confirmed within 2 weeks, so this Tribe's plan has been cancelled.");
+  await notifyGroupMembers(
+    group.id,
+    "SOCIAL_TRIBE_EXPIRED",
+    "Tribe cancelled",
+    `${group.name} didn't confirm a date in time, so it's been cancelled.`
+  );
+}
+
+export async function resolveExpiredSocialScheduleWindow(groupId: string) {
+  const group = await prisma.group.findUnique({ where: { id: groupId } });
+  if (group) await cancelIfScheduleTogetherWindowExpired(group);
+}
+
+// Bulk sweep for /groups/mine, which (unlike /groups/browse) does show
+// WORKING Tribes.
+export async function resolveExpiredSocialScheduleWindows() {
+  const candidates = await prisma.group.findMany({
+    where: { tribeType: "SOCIAL", dateType: "SCHEDULE_TOGETHER", state: "WORKING" },
+  });
+  for (const group of candidates) {
+    await cancelIfScheduleTogetherWindowExpired(group);
+  }
+}
+
 // Release a task back to the owner's personal library (3.12, 4.6, 6.13).
 async function releaseTask(taskId: string, status: "AVAILABLE" = "AVAILABLE") {
   await prisma.task.update({
@@ -244,6 +299,7 @@ async function resolveDissolutionVoteIfDue(vote: {
 async function serializeGroupDetail(groupId: string, viewerId: string) {
   await forfeitExpiredActiveTask(groupId);
   await resolveExpiredFixedDateSocialTribe(groupId);
+  await resolveExpiredSocialScheduleWindow(groupId);
 
   const group = await prisma.group.findUnique({
     where: { id: groupId },
@@ -291,7 +347,9 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     where: { groupId: group.id, applicantId: viewerId, status: { in: ["REJECTED", "TASK_REQUESTED"] } },
     select: { taskId: true },
   });
-  const declinedTaskIds = declinedApplications.map((a) => a.taskId);
+  // Social Tribe declines always have a null taskId (there's no task picker
+  // to grey out) - filtered out so this array only ever contains real ids.
+  const declinedTaskIds = declinedApplications.map((a) => a.taskId).filter((id): id is string => id != null);
 
   const activeMemberCount = group.members.length;
 
@@ -439,6 +497,7 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
 
 router.get("/groups/mine", async (req, res) => {
   await disbandExpiredFixedDateSocialTribes();
+  await resolveExpiredSocialScheduleWindows();
 
   const memberships = await prisma.groupMember.findMany({
     where: { userId: req.userId, status: "ACTIVE" },
@@ -523,10 +582,16 @@ router.get("/groups/browse", async (req, res) => {
       state: { in: ["RECRUITING", "READY"] },
       leaderId: { notIn: [...blockedUserIds] },
       ...(tribeType ? { tribeType } : {}),
-      ...(categoryId
-        ? tribeType === "SOCIAL"
-          ? { socialCategoryId: categoryId }
-          : { allowedCategories: { some: { categoryId } } }
+      // categoryId's meaning depends on which category table it comes from
+      // (Work's allowedCategories vs Social's single socialCategoryId) - with
+      // an explicit tribeType we know which, but with tribeType omitted
+      // (browsing both types) neither branch alone can match a category from
+      // the other type, so that case is handled below via hardFilters
+      // instead of a plain ternary here.
+      ...(categoryId && tribeType === "SOCIAL"
+        ? { socialCategoryId: categoryId }
+        : categoryId && tribeType === "WORK"
+        ? { allowedCategories: { some: { categoryId } } }
         : {}),
       ...(sizeMin != null ? { sizeMax: { gte: sizeMin } } : {}),
       ...(sizeMax != null ? { sizeMin: { lte: sizeMax } } : {}),
@@ -552,6 +617,9 @@ router.get("/groups/browse", async (req, res) => {
       // top-level "OR" would silently overwrite it.
       ...(() => {
         const hardFilters: object[] = [];
+        if (categoryId && !tribeType) {
+          hardFilters.push({ OR: [{ allowedCategories: { some: { categoryId } } }, { socialCategoryId: categoryId }] });
+        }
         if (viewer.age != null) {
           hardFilters.push({ OR: [{ preferredAgeMin: null }, { preferredAgeMin: { lte: viewer.age } }] });
           hardFilters.push({ OR: [{ preferredAgeMax: null }, { preferredAgeMax: { gte: viewer.age } }] });
@@ -746,8 +814,12 @@ const socialGroupSchema = z.object({
 });
 
 const createGroupSchema = z.discriminatedUnion("tribeType", [workGroupSchema, socialGroupSchema]).superRefine((data, ctx) => {
-  if (data.tribeType === "SOCIAL" && data.dateType === "FIXED" && !data.fixedDate) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Pick a date for this Tribe.", path: ["fixedDate"] });
+  if (data.tribeType === "SOCIAL" && data.dateType === "FIXED") {
+    if (!data.fixedDate) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Pick a date for this Tribe.", path: ["fixedDate"] });
+    } else if (new Date(data.fixedDate) <= new Date()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "The date must be in the future.", path: ["fixedDate"] });
+    }
   }
 });
 
@@ -899,10 +971,20 @@ router.put("/groups/:id", async (req, res) => {
     return res.status(400).json({ error: `Please remove this language before submitting: ${badWords.join(", ")}` });
   }
 
-  const updated = await prisma.group.update({ where: { id: group.id }, data: parsed.data });
-  if (updated.sizeMin > updated.sizeMax) {
+  // Validated against the merged (existing + incoming) values *before*
+  // writing anything - a validation failure used to happen after the update
+  // had already landed, leaving the group in the invalid state the error
+  // claimed to have prevented.
+  const mergedSizeMin = parsed.data.sizeMin ?? group.sizeMin;
+  const mergedSizeMax = parsed.data.sizeMax ?? group.sizeMax;
+  if (mergedSizeMin > mergedSizeMax) {
     return res.status(400).json({ error: "Minimum group size can't be greater than the maximum." });
   }
+  if (group.tribeType === "SOCIAL" && parsed.data.locationLabel !== undefined && parsed.data.locationLabel.trim().length === 0) {
+    return res.status(400).json({ error: "Location is required for Social Tribes." });
+  }
+
+  await prisma.group.update({ where: { id: group.id }, data: parsed.data });
   res.json(await serializeGroupDetail(group.id, req.userId!));
 });
 
@@ -913,6 +995,12 @@ const applySchema = z.object({ taskId: z.string().optional(), message: z.string(
 
 // 4.5/4.6/4.13 - apply to join, or (for an existing member) resubmit a task for a new cycle.
 router.post("/groups/:id/apply", async (req, res) => {
+  // A Fixed-Date Social Tribe whose date has passed only actually gets
+  // marked DISBANDED the next time something reads it - resolve first so an
+  // application can't succeed against a Tribe whose one and only date has
+  // already gone by just because nobody happened to browse/view it recently.
+  await resolveExpiredFixedDateSocialTribe(req.params.id);
+
   const group = await prisma.group.findUnique({ where: { id: req.params.id } });
   if (!group) return res.status(404).json({ error: "Group not found." });
   if (!["RECRUITING", "READY"].includes(group.state)) {
@@ -975,6 +1063,9 @@ router.post("/groups/:id/apply", async (req, res) => {
     const existingMember = await prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId: group.id, userId: req.userId! } },
     });
+    if (existingMember?.status === "ACTIVE") {
+      return res.status(400).json({ error: "You're already a member of this Tribe." });
+    }
     if (!existingMember) {
       const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
       const activeGroups = await activeMembershipCount(req.userId!);
@@ -1148,7 +1239,13 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
         excludeUserId: application.applicantId,
       });
     }
-    await notifyUser(application.applicantId, "APPLICATION_APPROVED", "Application approved", `You're in ${group.name}!`, { groupId: group.id });
+    // Skip the "you're in!" notification for someone who was already an
+    // active member (a stray application from before applying while active
+    // was blocked, or any other edge case) - they don't need to be told
+    // they've joined a Tribe they never left.
+    if (!existingMember) {
+      await notifyUser(application.applicantId, "APPLICATION_APPROVED", "Application approved", `You're in ${group.name}!`, { groupId: group.id });
+    }
   } else if (decision === "REJECT") {
     await prisma.$transaction([
       ...(application.taskId ? [releaseTaskTx(application.taskId)] : []),
@@ -1329,6 +1426,8 @@ const inviteSchema = z.object({
 });
 
 router.post("/groups/:id/invitations", async (req, res) => {
+  await resolveExpiredFixedDateSocialTribe(req.params.id);
+
   const group = await prisma.group.findUnique({ where: { id: req.params.id } });
   if (!group) return res.status(404).json({ error: "Group not found." });
   if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can invite members." });
@@ -1388,7 +1487,12 @@ router.get("/me/invitations", async (req, res) => {
     where: { invitedUserId: req.userId, status: "PENDING" },
     include: {
       group: {
-        include: { allowedCategories: { include: { category: true } }, leader: true, members: { where: { status: "ACTIVE" } } },
+        include: {
+          allowedCategories: { include: { category: true } },
+          socialCategory: true,
+          leader: true,
+          members: { where: { status: "ACTIVE" } },
+        },
       },
       suggestedTask: true,
     },
@@ -1406,7 +1510,13 @@ router.get("/me/invitations", async (req, res) => {
         group: {
           id: i.group.id,
           name: i.group.name,
+          tribeType: i.group.tribeType,
           categories: i.group.allowedCategories.map((ac) => ac.category.name),
+          socialCategory: i.group.socialCategory?.name ?? null,
+          dateType: i.group.dateType,
+          fixedDate: i.group.fixedDate,
+          fixedStartTime: i.group.fixedStartTime,
+          locationLabel: i.group.locationLabel,
           leaderName: i.group.leader.firstName,
           leaderIsPro: i.group.leader.subscriptionTier === "SUBSCRIBER",
           memberCount: i.group.members.length,

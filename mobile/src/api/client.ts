@@ -30,7 +30,7 @@ export class ApiError extends Error {
 
 export async function apiFetch<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {}
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {}
 ): Promise<T> {
   const token = await getToken();
   const res = await fetch(`${API_BASE_URL}${path}`, {
@@ -43,6 +43,7 @@ export async function apiFetch<T>(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   });
 
   const isJson = res.headers.get("content-type")?.includes("application/json");

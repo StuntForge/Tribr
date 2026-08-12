@@ -6,8 +6,8 @@ export interface PlaceSuggestion {
   lng: number;
 }
 
-export function searchPlaces(query: string) {
-  return apiFetch<PlaceSuggestion[]>(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+export function searchPlaces(query: string, signal?: AbortSignal) {
+  return apiFetch<PlaceSuggestion[]>(`/api/geocode/search?q=${encodeURIComponent(query)}`, { signal });
 }
 
 export function reverseGeocode(lat: number, lng: number) {

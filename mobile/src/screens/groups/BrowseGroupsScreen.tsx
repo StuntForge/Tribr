@@ -17,17 +17,7 @@ import { colors, radii, shadows, spacing } from "../../theme";
 import { JOB_LENGTHS, JOB_LENGTH_LABELS, JobLength } from "../../constants/jobLength";
 import { categoryThumbnail } from "../../constants/categoryThumbnails";
 import { socialCategoryIcon } from "../../constants/socialCategoryIcons";
-
-function formatSocialDate(group: Pick<GroupSummary, "dateType" | "fixedDate" | "fixedStartTime">): string {
-  if (group.dateType !== "FIXED" || !group.fixedDate) return "Date: To be arranged";
-  const d = new Date(group.fixedDate);
-  const dateLabel = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-  if (!group.fixedStartTime) return dateLabel;
-  const [h, m] = group.fixedStartTime.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${dateLabel}, ${hour12}:${String(m).padStart(2, "0")} ${period}`;
-}
+import { formatSocialEventDate } from "../../components/CalendarPicker";
 
 type SortKey = "distance" | "members";
 
@@ -46,19 +36,17 @@ const SIZE_OPTIONS: { label: string; sizeMin?: number; sizeMax?: number }[] = [
   { label: "6+", sizeMin: 6 },
 ];
 
-type FilterKey = "radius" | "size" | "category" | "jobLength" | "tribeType";
-type TribeTypeFilter = TribeType | null;
+type FilterKey = "radius" | "size" | "category" | "jobLength";
 
-const TRIBE_TYPE_FILTER_OPTIONS: { label: string; value: TribeTypeFilter }[] = [
-  { label: "Any", value: null },
-  { label: "Work", value: "WORK" },
-  { label: "Social", value: "SOCIAL" },
+const TRIBE_TYPE_TABS = [
+  { value: "WORK" as TribeType, label: "Work Tribe", icon: "hammer" as const },
+  { value: "SOCIAL" as TribeType, label: "Social Tribe", icon: "people" as const },
 ];
 
 export default function BrowseGroupsScreen({ navigation }: any) {
   const { profile } = useAuth();
   const isSubscriber = profile?.subscriptionTier === "SUBSCRIBER";
-  const [tribeTypeFilter, setTribeTypeFilter] = useState<TribeTypeFilter>(null);
+  const [tribeTypeFilter, setTribeTypeFilter] = useState<TribeType>("WORK");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState<string | null>(null);
   const [radius, setRadius] = useState<number | null>(null);
@@ -79,10 +67,17 @@ export default function BrowseGroupsScreen({ navigation }: any) {
     queryFn: () => getJobCategories(categoryKind),
     enabled: isSubscriber,
   });
-  const selectTribeTypeFilter = (v: TribeTypeFilter) => {
+  const selectTribeTypeFilter = (v: TribeType) => {
     setTribeTypeFilter(v);
     setCategoryId(null);
     setCategoryName(null);
+    // Job length is a Work-only concept (Social uses "Estimated length" as a
+    // create-time-only field, not a browse filter) - clear it so switching
+    // to Social doesn't silently keep an invisible filter active.
+    setJobLength(null);
+    // The category/job-length panels are keyed to the old type's options -
+    // close whatever's open rather than leave a stale panel expanded.
+    setExpandedFilter(null);
   };
 
   const sizeOption = SIZE_OPTIONS[sizeIndex];
@@ -127,22 +122,23 @@ export default function BrowseGroupsScreen({ navigation }: any) {
         <Text style={styles.title}>Find a Tribe</Text>
         <Text style={styles.subtitle}>Find local Tribes and start getting things done together.</Text>
       </WaveHeader>
+
+      <View style={styles.typeTabsWrap}>
+        <SegmentedTabs options={TRIBE_TYPE_TABS} value={tribeTypeFilter} onChange={selectTribeTypeFilter} />
+      </View>
+
       <View style={styles.filters}>
         <View style={styles.filterBar}>
-          <FilterPill
-            label="Type"
-            value={TRIBE_TYPE_FILTER_OPTIONS.find((o) => o.value === tribeTypeFilter)?.label ?? "Any"}
-            active={expandedFilter === "tribeType"}
-            onPress={() => toggleFilter("tribeType")}
-          />
           <FilterPill label="Radius" value={radiusLabel} active={expandedFilter === "radius"} onPress={() => toggleFilter("radius")} />
           <FilterPill label="Size" value={SIZE_OPTIONS[sizeIndex].label} active={expandedFilter === "size"} onPress={() => toggleFilter("size")} />
-          <FilterPill
-            label="Job length"
-            value={jobLength ? JOB_LENGTH_LABELS[jobLength] : "Any"}
-            active={expandedFilter === "jobLength"}
-            onPress={() => toggleFilter("jobLength")}
-          />
+          {tribeTypeFilter === "WORK" && (
+            <FilterPill
+              label="Job length"
+              value={jobLength ? JOB_LENGTH_LABELS[jobLength] : "Any"}
+              active={expandedFilter === "jobLength"}
+              onPress={() => toggleFilter("jobLength")}
+            />
+          )}
           {isSubscriber && (
             <FilterPill label="Category" value={categoryName ?? "Any"} active={expandedFilter === "category"} onPress={() => toggleFilter("category")} />
           )}
@@ -155,24 +151,6 @@ export default function BrowseGroupsScreen({ navigation }: any) {
             onChange={setSort}
           />
         </View>
-
-        {expandedFilter === "tribeType" && (
-          <View style={styles.expandedPanel}>
-            <View style={styles.chipWrap}>
-              {TRIBE_TYPE_FILTER_OPTIONS.map((opt) => (
-                <FilterChip
-                  key={opt.label}
-                  label={opt.label}
-                  selected={tribeTypeFilter === opt.value}
-                  onPress={() => {
-                    selectTribeTypeFilter(opt.value);
-                    setExpandedFilter(null);
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-        )}
 
         {expandedFilter === "radius" && (
           <View style={styles.expandedPanel}>
@@ -308,24 +286,29 @@ export default function BrowseGroupsScreen({ navigation }: any) {
               />
             )}
           </View>
-          <View style={styles.stripWrap}>
-            <AnimatedPressable
-              style={styles.stripHandle}
-              onPress={() => setStripCollapsed((v) => !v)}
-              accessibilityLabel={stripCollapsed ? "Show nearby Tribes" : "Hide nearby Tribes"}
-            >
-              <View style={styles.stripHandleBar} />
-              <View style={styles.stripHandleButton}>
-                <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={20} color="#fff" />
-              </View>
-            </AnimatedPressable>
-            {!stripCollapsed && (
-              <NearbyGroupsCarousel
-                onSeeAll={() => setView("list")}
-                onPressCard={(groupId) => navigation.navigate("GroupDetail", { groupId })}
-              />
-            )}
-          </View>
+          {/* This carousel is Work-only (backend excludes Social from
+              nearby-recruiting by design) - the whole handle+strip would be a
+              dead control with nothing to show/hide while Social is selected. */}
+          {tribeTypeFilter === "WORK" && (
+            <View style={styles.stripWrap}>
+              <AnimatedPressable
+                style={styles.stripHandle}
+                onPress={() => setStripCollapsed((v) => !v)}
+                accessibilityLabel={stripCollapsed ? "Show nearby Tribes" : "Hide nearby Tribes"}
+              >
+                <View style={styles.stripHandleBar} />
+                <View style={styles.stripHandleButton}>
+                  <Ionicons name={stripCollapsed ? "chevron-up" : "chevron-down"} size={20} color="#fff" />
+                </View>
+              </AnimatedPressable>
+              {!stripCollapsed && (
+                <NearbyGroupsCarousel
+                  onSeeAll={() => setView("list")}
+                  onPressCard={(groupId) => navigation.navigate("GroupDetail", { groupId })}
+                />
+              )}
+            </View>
+          )}
         </View>
       ) : (
         <FlatList
@@ -391,7 +374,7 @@ export default function BrowseGroupsScreen({ navigation }: any) {
                   </Text>
                   {item.leaderIsPro && <ProBadge size="tiny" />}
                 </View>
-                {item.tribeType === "SOCIAL" && <Text style={styles.socialDateLine}>{formatSocialDate(item)}</Text>}
+                {item.tribeType === "SOCIAL" && <Text style={styles.socialDateLine}>{formatSocialEventDate(item)}</Text>}
                 <Text style={styles.cardDescription} numberOfLines={2}>
                   {item.description}
                 </Text>
@@ -443,7 +426,7 @@ function MarkerPreviewCard({
           {group.memberCount}/{group.sizeMax} members · led by {group.leaderName}
           {group.approxDistanceMiles != null ? ` · ${group.approxDistanceMiles} mi` : ""}
         </Text>
-        {group.tribeType === "SOCIAL" && <Text style={styles.markerCardMeta}>{formatSocialDate(group)}</Text>}
+        {group.tribeType === "SOCIAL" && <Text style={styles.markerCardMeta}>{formatSocialEventDate(group)}</Text>}
         <AnimatedPressable style={styles.markerCardButton} onPress={onView}>
           <Text style={styles.markerCardButtonText}>View Tribe</Text>
         </AnimatedPressable>
@@ -482,6 +465,7 @@ const styles = StyleSheet.create({
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   title: { color: "#fff", fontSize: 22, fontWeight: "800" },
   subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4 },
+  typeTabsWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   filters: { padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
   filterBar: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   filterPill: {

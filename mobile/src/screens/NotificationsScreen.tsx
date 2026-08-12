@@ -84,13 +84,19 @@ export default function NotificationsScreen({ navigation, route }: any) {
 
   const onPressNotification = (item: NotificationItem) => {
     if (!item.read) readMutation.mutate(item.id);
-    const target = resolveNotificationRoute(item.type, { groupId: item.groupId, taskId: item.taskId, voteId: item.voteId });
+    const target = resolveNotificationRoute(item.type, {
+      groupId: item.groupId,
+      groupName: item.groupName ?? undefined,
+      taskId: item.taskId,
+      voteId: item.voteId,
+    });
     if (target) navigation.navigate(target.tab, target.screen ? { screen: target.screen, params: target.params } : undefined);
   };
 
   const onPressActionItem = (item: ActionItem) => {
     const target = resolveNotificationRoute(item.type, {
       groupId: item.groupId,
+      groupName: item.groupName,
       taskId: item.taskId,
       taskName: item.taskName,
       voteId: item.voteId,

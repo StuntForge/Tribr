@@ -39,6 +39,7 @@ export interface ActionItem {
   title: string;
   body: string;
   groupId?: string;
+  groupName?: string;
   taskId?: string;
   taskName?: string;
   voteId?: string;
