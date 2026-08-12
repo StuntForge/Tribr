@@ -125,7 +125,7 @@ export async function forfeitExpiredActiveTask(groupId: string) {
       where: { id: newOrder[0] },
       data: { status: "ACTIVE", activatedAt: new Date() },
     });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this Tribe. Schedule a work date within 2 weeks.", {
       groupId,
       taskId: nextTask.id,
       taskName: nextTask.name,
@@ -190,11 +190,11 @@ async function resolveDissolutionVoteIfDue(vote: {
     await prisma.group.update({ where: { id: vote.groupId }, data: { state: "DISBANDED" } });
   }
 
-  await postSystemMessage(vote.groupId, passed ? "The dissolution vote passed. This group has disbanded." : "The dissolution vote failed. The group continues.");
+  await postSystemMessage(vote.groupId, passed ? "The dissolution vote passed. This Tribe has disbanded." : "The dissolution vote failed. The Tribe continues.");
   await notifyGroupMembers(
     vote.groupId,
     "DISSOLUTION_OUTCOME",
-    passed ? "Group dissolved" : "Group continues",
+    passed ? "Tribe dissolved" : "Tribe continues",
     passed ? `${group.name} was dissolved by member vote.` : `The vote to dissolve ${group.name} did not pass.`
   );
 
@@ -1108,7 +1108,7 @@ router.post("/groups/:id/invitations", async (req, res) => {
     data: { groupId: group.id, invitedUserId, suggestedTaskId },
   });
 
-  await notifyUser(invitedUserId, "GROUP_INVITATION", "Group invitation", `You've been invited to join ${group.name}.`, {
+  await notifyUser(invitedUserId, "GROUP_INVITATION", "Tribe invitation", `You've been invited to join ${group.name}.`, {
     groupId: group.id,
   });
 
@@ -1366,7 +1366,7 @@ router.post("/groups/:id/members/:userId/remove", async (req, res) => {
 
   const removedUser = await prisma.user.findUnique({ where: { id: req.params.userId } });
   await postSystemMessage(group.id, `${removedUser?.firstName} was removed from the group.`);
-  await notifyUser(req.params.userId, "REMOVED_FROM_GROUP", "Removed from group", `You were removed from ${group.name}.`, {
+  await notifyUser(req.params.userId, "REMOVED_FROM_GROUP", "Removed from Tribe", `You were removed from ${group.name}.`, {
     groupId: group.id,
   });
 
@@ -1404,7 +1404,7 @@ async function releaseKickedMember(groupId: string, targetUserId: string) {
         where: { id: newOrder[0] },
         data: { status: "ACTIVE", activatedAt: new Date() },
       });
-      await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+      await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this Tribe. Schedule a work date within 2 weeks.", {
         groupId,
         taskId: nextTask.id,
         taskName: nextTask.name,
@@ -1537,7 +1537,7 @@ router.post("/kick-votes/:voteId/ballot", async (req, res) => {
     await notifyGroupMembers(vote.groupId, "KICK_VOTE_OUTCOME", "Member removed", `${target?.firstName} was removed from ${group.name} by member vote.`, {
       extra: { voteId: vote.id },
     });
-    await notifyUser(vote.targetUserId, "REMOVED_FROM_GROUP", "Removed from group", `You were removed from ${group.name} by member vote.`, {
+    await notifyUser(vote.targetUserId, "REMOVED_FROM_GROUP", "Removed from Tribe", `You were removed from ${group.name} by member vote.`, {
       groupId: group.id,
     });
     return res.json({ ok: true, outcome: "REMOVED" });
@@ -1562,10 +1562,10 @@ router.post("/groups/:id/disband", async (req, res) => {
   }
   const pendingApps = await prisma.groupApplication.findMany({ where: { groupId: group.id, status: "PENDING" } });
   await Promise.all(pendingApps.map((a) => releaseTask(a.taskId)));
-  await prisma.groupApplication.updateMany({ where: { groupId: group.id, status: "PENDING" }, data: { status: "REJECTED", rejectionReason: "Group disbanded." } });
+  await prisma.groupApplication.updateMany({ where: { groupId: group.id, status: "PENDING" }, data: { status: "REJECTED", rejectionReason: "Tribe disbanded." } });
 
   await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
-  await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Group disbanded", `${group.name} has been disbanded by the leader.`, {
+  await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Tribe disbanded", `${group.name} has been disbanded by the leader.`, {
     excludeUserId: req.userId,
   });
   res.json({ ok: true });
@@ -1602,7 +1602,9 @@ router.post("/groups/:id/start-work", async (req, res) => {
 
   const firstTask = cycleTasks.find((t) => t.id === order[0])!;
   await postSystemMessage(group.id, "Start Work - the cycle has begun!");
-  await notifyGroupMembers(group.id, "START_WORK", "Work has started", `${group.name} has started this cycle.`);
+  await notifyGroupMembers(group.id, "START_WORK", "Work has started", `${group.name} has started this cycle.`, {
+    excludeUserId: req.userId,
+  });
   await notifyUser(firstTask.ownerId, "TASK_ACTIVE", "Your task is now active", `It's your turn in ${group.name}. Schedule a work date within 2 weeks.`, {
     groupId: group.id,
     taskId: firstTask.id,
@@ -1641,7 +1643,7 @@ router.post("/groups/:id/tasks/:taskId/defer", async (req, res) => {
 
   const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: second } });
   await postSystemMessage(req.params.id, `${task.name} was deferred. It's now ${nextTask.name}'s turn.`);
-  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+  await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this Tribe. Schedule a work date within 2 weeks.", {
     groupId: req.params.id,
     taskId: nextTask.id,
     taskName: nextTask.name,
@@ -1670,7 +1672,7 @@ router.post("/groups/:id/tasks/:taskId/forgo", async (req, res) => {
   if (wasActive && newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
     await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE", activatedAt: new Date() } });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this Tribe. Schedule a work date within 2 weeks.", {
       groupId: req.params.id,
       taskId: nextTask.id,
       taskName: nextTask.name,
@@ -1757,7 +1759,9 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   await prisma.task.update({ where: { id: task.id }, data: { status: "ARCHIVED" } });
   await deletePhotosForTask(task.id);
   await postSystemMessage(req.params.id, `${task.name} was completed! 🎉`);
-  await notifyGroupMembers(req.params.id, "TASK_COMPLETED", "Task completed", `${task.name} was marked complete.`);
+  await notifyGroupMembers(req.params.id, "TASK_COMPLETED", "Task completed", `${task.name} was marked complete.`, {
+    excludeUserId: req.userId,
+  });
   for (const userId of attendedUserIds) {
     await notifyUser(userId, "RATE_HOST_PENDING", "Rate the host", `How was ${task.name}? Rate the host while it's fresh.`, {
       groupId: req.params.id,
@@ -1767,7 +1771,7 @@ router.post("/groups/:id/tasks/:taskId/complete", async (req, res) => {
   if (newOrder.length > 0) {
     const nextTask = await prisma.task.findUniqueOrThrow({ where: { id: newOrder[0] } });
     await prisma.task.update({ where: { id: nextTask.id }, data: { status: "ACTIVE", activatedAt: new Date() } });
-    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this group. Schedule a work date within 2 weeks.", {
+    await notifyUser(nextTask.ownerId, "TASK_ACTIVE", "Your task is now active", "It's your turn in this Tribe. Schedule a work date within 2 weeks.", {
       groupId: req.params.id,
       taskId: nextTask.id,
       taskName: nextTask.name,
@@ -1864,7 +1868,7 @@ router.post("/groups/:id/complete-cycle", async (req, res) => {
 
   if (parsed.data.action === "DISBAND") {
     await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
-    await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Group disbanded", `${group.name} has ended.`, { excludeUserId: req.userId });
+    await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Tribe disbanded", `${group.name} has ended.`, { excludeUserId: req.userId });
   } else {
     await prisma.$transaction(async (tx) => {
       const nextCycleNumber = group.currentCycleNumber + 1;

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { notifyUser } from "../services/notify";
 
 const router = Router();
 router.use(requireAuth);
@@ -83,6 +84,8 @@ router.post("/groups/:id/messages", async (req, res) => {
     include: { sender: true },
   });
 
+  await notifyNewUnreadMessage(req.params.id, req.userId!, message);
+
   res.status(201).json({
     id: message.id,
     isSystem: false,
@@ -93,5 +96,41 @@ router.post("/groups/:id/messages", async (req, res) => {
     createdAt: message.createdAt,
   });
 });
+
+// Push-notify group members whose chat is currently fully read - only the
+// message that takes them from "no unread" to "unread" triggers a push, so
+// a busy back-and-forth pings once, not per message, until they open it.
+async function notifyNewUnreadMessage(
+  groupId: string,
+  senderId: string,
+  message: { text: string | null; createdAt: Date; sender: { firstName: string | null } | null }
+) {
+  const group = await prisma.group.findUnique({ where: { id: groupId }, select: { name: true } });
+  if (!group) return;
+
+  const members = await prisma.groupMember.findMany({
+    where: { groupId, status: "ACTIVE", userId: { not: senderId } },
+  });
+  if (members.length === 0) return;
+
+  const reads = await prisma.groupChatRead.findMany({
+    where: { groupId, userId: { in: members.map((m) => m.userId) } },
+  });
+  const readAtByUser = new Map(reads.map((r) => [r.userId, r.lastReadAt]));
+  const preview = message.text ? message.text.slice(0, 80) : "Sent a photo";
+  const senderName = message.sender?.firstName ?? "Someone";
+
+  await Promise.all(
+    members.map(async (member) => {
+      const since = readAtByUser.get(member.userId) ?? member.joinedAt;
+      const earlierUnread = await prisma.groupChatMessage.count({
+        where: { groupId, senderId: { not: member.userId }, createdAt: { gt: since, lt: message.createdAt } },
+      });
+      if (earlierUnread === 0) {
+        await notifyUser(member.userId, "NEW_CHAT_MESSAGE", `${senderName} in ${group.name}`, preview, { groupId });
+      }
+    })
+  );
+}
 
 export default router;
