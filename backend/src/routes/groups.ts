@@ -1358,7 +1358,10 @@ router.post("/groups/:id/leave", async (req, res) => {
   const shouldReleaseTask = myTask && myTask.status !== "ARCHIVED";
 
   await prisma.$transaction(async (tx) => {
-    await tx.groupMember.update({ where: { id: member.id }, data: { status: "LEFT", leftAt: new Date() } });
+    await tx.groupMember.update({
+      where: { id: member.id },
+      data: { status: "LEFT", leftAt: new Date(), farewellMessage: parsed.data.message ?? undefined },
+    });
     if (shouldReleaseTask) await tx.task.update({ where: { id: myTask!.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } });
   });
 
@@ -1379,11 +1382,59 @@ router.post("/groups/:id/leave", async (req, res) => {
     const remainingActive = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
     if (remainingActive === 0) {
       await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+      await sendFarewellReport(group.id, group.name);
     }
   }
 
   res.json({ ok: true });
 });
+
+// Once the last member leaves a completed Tribe, everyone who was ever in
+// it gets a final personalized wrap-up: everyone's goodbye message, and
+// which of their fellow members favourited them. Favourites are a global
+// concept in the app - this only surfaces ones between people who were
+// actually in this Tribe together.
+async function sendFarewellReport(groupId: string, groupName: string) {
+  const allMembers = await prisma.groupMember.findMany({
+    where: { groupId },
+    include: { user: { select: { firstName: true } } },
+    orderBy: { joinedAt: "asc" },
+  });
+  if (allMembers.length === 0) return;
+
+  const memberIds = allMembers.map((m) => m.userId);
+  const favourites = await prisma.favourite.findMany({
+    where: { ownerId: { in: memberIds }, favouriteUserId: { in: memberIds } },
+  });
+  const nameById = new Map(allMembers.map((m) => [m.userId, m.user.firstName ?? "A member"]));
+
+  const goodbyeLines = allMembers
+    .filter((m) => m.farewellMessage)
+    .map((m) => `${nameById.get(m.userId)}: "${m.farewellMessage}"`);
+
+  await Promise.all(
+    allMembers.map(async (member) => {
+      const favouritedBy = favourites
+        .filter((f) => f.favouriteUserId === member.userId)
+        .map((f) => nameById.get(f.ownerId))
+        .filter((name): name is string => Boolean(name));
+
+      const lines = [...goodbyeLines];
+      if (favouritedBy.length > 0) {
+        if (lines.length > 0) lines.push("");
+        lines.push(`You were favourited by: ${favouritedBy.join(", ")}`);
+      }
+
+      await notifyUser(
+        member.userId,
+        "TRIBE_FAREWELL_REPORT",
+        `${groupName} - farewell report`,
+        lines.length > 0 ? lines.join("\n") : "Everyone has left this Tribe. Thanks for being part of it!",
+        { groupId }
+      );
+    })
+  );
+}
 
 // Leader removes a member outright - only while nothing has actually
 // started yet. Once WORKING, this same outcome has to go through a vote

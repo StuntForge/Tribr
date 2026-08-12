@@ -283,6 +283,10 @@ model GroupMember {
   status    String   @default("ACTIVE") // ACTIVE | LEFT
   joinedAt  DateTime @default(now())
   leftAt    DateTime?
+  // Optional goodbye message left when completing the wrap-up flow for a
+  // finished Tribe - stored structurally (not just as chat text) so the
+  // final farewell report can be compiled once everyone's left.
+  farewellMessage String?
 
   @@unique([groupId, userId])
   @@index([groupId])
