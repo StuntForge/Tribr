@@ -13,6 +13,7 @@ import AnimatedPressable from "../../components/AnimatedPressable";
 import SegmentedTabs from "../../components/SegmentedTabs";
 import EmptyState from "../../components/EmptyState";
 import { InfoCard, InfoCardRow } from "../../components/InfoCard";
+import { categoryThumbnail } from "../../constants/categoryThumbnails";
 import { colors, radii, spacing } from "../../theme";
 
 const EMPTY_IMAGE = require("../../../assets/illustrations/processed/task-library-empty-state.png");
@@ -231,18 +232,26 @@ export default function TaskLibraryScreen({ navigation, route }: any) {
 }
 
 function TaskCard({ task, onPress }: { task: Task; onPress: () => void }) {
+  const thumbUrl = task.photos[0]?.url;
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} accessibilityRole="button">
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{task.name}</Text>
-        <View style={[styles.badge, { borderColor: STATUS_COLOR[task.status] }]}>
-          <Text style={[styles.badgeText, { color: STATUS_COLOR[task.status] }]}>{STATUS_LABEL[task.status]}</Text>
+      {thumbUrl ? (
+        <Image source={{ uri: thumbUrl }} style={styles.cardThumb} />
+      ) : (
+        <Image source={categoryThumbnail(task.category.name)} style={styles.cardThumb} resizeMode="contain" />
+      )}
+      <View style={{ flex: 1 }}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>{task.name}</Text>
+          <View style={[styles.badge, { borderColor: STATUS_COLOR[task.status] }]}>
+            <Text style={[styles.badgeText, { color: STATUS_COLOR[task.status] }]}>{STATUS_LABEL[task.status]}</Text>
+          </View>
         </View>
+        <Text style={styles.cardMeta}>
+          {task.category.name} · {jobLengthLabel(task.jobLength)}
+        </Text>
+        {task.locationLabel && <Text style={styles.cardMeta}>{task.locationLabel}</Text>}
       </View>
-      <Text style={styles.cardMeta}>
-        {task.category.name} · {jobLengthLabel(task.jobLength)}
-      </Text>
-      {task.locationLabel && <Text style={styles.cardMeta}>{task.locationLabel}</Text>}
     </TouchableOpacity>
   );
 }
@@ -290,6 +299,9 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
   emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20 },
   card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
@@ -297,6 +309,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
+  cardThumb: { width: 48, height: 48, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
   cardTitle: { fontSize: 15, fontWeight: "600", color: colors.text, flex: 1 },
   badge: { borderWidth: 1, borderRadius: 12, paddingHorizontal: spacing.sm, paddingVertical: 2 },

@@ -145,8 +145,16 @@ export default function PublicProfileScreen({ route, navigation }: any) {
         </View>
       ) : (
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => favouriteMutation.mutate()}>
-            <Text style={styles.secondaryButtonText}>{isFavourite ? "★ Favourited" : "☆ Favourite"}</Text>
+          <TouchableOpacity
+            style={[styles.secondaryButton, favouriteMutation.isPending && styles.buttonDisabled]}
+            onPress={() => !favouriteMutation.isPending && favouriteMutation.mutate()}
+            disabled={favouriteMutation.isPending}
+          >
+            {favouriteMutation.isPending ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={styles.secondaryButtonText}>{isFavourite ? "★ Favourited" : "☆ Favourite"}</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -266,6 +274,7 @@ function TaskInviteRow({
 }
 
 const styles = StyleSheet.create({
+  buttonDisabled: { opacity: 0.6 },
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },

@@ -1,6 +1,7 @@
 import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import { getNearbyRecruitingGroups } from "../api/groups";
 import AnimatedPressable from "./AnimatedPressable";
@@ -11,7 +12,20 @@ const CARD_WIDTH = 168;
 const IMAGE_HEIGHT = 116;
 
 export default function NearbyGroupsCarousel({ onSeeAll, onPressCard }: { onSeeAll: () => void; onPressCard: (groupId: string) => void }) {
-  const { data } = useQuery({ queryKey: ["nearby-recruiting-groups"], queryFn: getNearbyRecruitingGroups });
+  // The backend already excludes anything not RECRUITING (e.g. a group that
+  // just got disbanded) - a stale client cache was the only reason a dead
+  // Tribe could keep showing up here, so refetch periodically and on focus.
+  const { data, refetch } = useQuery({
+    queryKey: ["nearby-recruiting-groups"],
+    queryFn: getNearbyRecruitingGroups,
+    refetchInterval: 20000,
+  });
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   if (!data || data.length === 0) return null;
 

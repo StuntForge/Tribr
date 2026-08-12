@@ -133,6 +133,27 @@ export default function GroupDetailScreen({ route, navigation }: any) {
     );
   }
 
+  // A stale notification, a left-open tab, or the last member's leave can
+  // all land here after the viewer is no longer part of this Tribe (or it's
+  // been disbanded outright). RECRUITING/READY stay viewable since that's
+  // the normal "browsing before joining" path.
+  const noLongerAccessible =
+    !group.isMember && !group.isLeader && !["RECRUITING", "READY"].includes(group.state);
+  if (noLongerAccessible) {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="people-outline" size={40} color={colors.textMuted} />
+        <Text style={styles.noLongerInTribeTitle}>No longer in Tribe</Text>
+        <Text style={styles.noLongerInTribeBody}>
+          {group.state === "DISBANDED" ? "This Tribe has been disbanded." : "You're not a member of this Tribe anymore."}
+        </Text>
+        <TouchableOpacity style={styles.primaryButtonFull} onPress={() => navigation.navigate("GroupsHome")}>
+          <Text style={styles.primaryButtonFullText}>Back to Tribes</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const myMembership = group.members.find((m) => m.userId === profile?.id);
   const myTaskUnsettled =
     myMembership?.currentTask && ["SUBMITTED", "APPROVED", "ACTIVE"].includes(myMembership.currentTask.status);
@@ -181,12 +202,13 @@ export default function GroupDetailScreen({ route, navigation }: any) {
       extraScrollHeight={24}
     >
       <View style={styles.heroCard}>
-        {categoryThumbnail(group.leaderTaskCategory) && (
-          <Image source={categoryThumbnail(group.leaderTaskCategory)} style={styles.heroCategoryBadge} resizeMode="contain" />
-        )}
         <View style={styles.heroTopRow}>
           {group.leaderTaskPhotoUrl ? (
             <Image source={{ uri: group.leaderTaskPhotoUrl }} style={styles.heroPhoto} />
+          ) : categoryThumbnail(group.leaderTaskCategory) ? (
+            <View style={[styles.heroPhoto, styles.heroPhotoFallback]}>
+              <Image source={categoryThumbnail(group.leaderTaskCategory)} style={styles.heroCategoryImage} resizeMode="contain" />
+            </View>
           ) : (
             <View style={[styles.heroPhoto, styles.heroPhotoFallback]}>
               <Ionicons name="people" size={28} color={colors.primary} />
@@ -568,7 +590,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
             <>
               <TouchableOpacity
                 style={[styles.primaryButtonFull, (group.state !== "READY" || busy) && styles.buttonDisabled]}
-                onPress={() => startWorkMutation.mutate(undefined as never)}
+                onPress={() => !startWorkMutation.isPending && startWorkMutation.mutate(undefined as never)}
                 disabled={group.state !== "READY" || busy}
               >
                 {startWorkMutation.isPending ? (
@@ -672,7 +694,9 @@ function PreviousMembersQuickInvite({ groupId, navigation }: { groupId: string; 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, padding: spacing.xl, gap: spacing.sm },
+  noLongerInTribeTitle: { ...type.h3, textAlign: "center" },
+  noLongerInTribeBody: { ...type.caption, textAlign: "center", marginBottom: spacing.md },
   content: { padding: spacing.lg, paddingBottom: spacing.xl },
 
   heroCard: {
@@ -683,7 +707,7 @@ const styles = StyleSheet.create({
     position: "relative",
     ...shadows.card,
   },
-  heroCategoryBadge: { position: "absolute", top: spacing.sm, right: spacing.sm, width: 36, height: 36, zIndex: 1 },
+  heroCategoryImage: { width: 64, height: 64 },
   heroTopRow: { flexDirection: "row", gap: spacing.md },
   heroPhoto: { width: 92, height: 92, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
   heroPhotoFallback: { alignItems: "center", justifyContent: "center" },

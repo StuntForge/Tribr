@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Task } from "../api/tasks";
+import { categoryThumbnail } from "../constants/categoryThumbnails";
 import { colors, radii, spacing } from "../theme";
 
 // Shared "pick one of my tasks" row - full name/category/description plus
@@ -21,8 +22,15 @@ export default function TaskSelectRow({
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const thumbUrl = task.photos[0]?.url;
+
   return (
     <View style={[styles.taskRow, selected && styles.taskRowSelected, disabled && styles.taskRowDisabled]}>
+      {thumbUrl ? (
+        <Image source={{ uri: thumbUrl }} style={styles.taskRowThumb} />
+      ) : (
+        <Image source={categoryThumbnail(task.category.name)} style={styles.taskRowThumb} resizeMode="contain" />
+      )}
       <View style={{ flex: 1 }}>
         <Text style={styles.taskRowTitle}>{task.name}</Text>
         <Text style={styles.taskRowCategory}>{task.category.name}</Text>
@@ -58,6 +66,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
+  taskRowThumb: { width: 48, height: 48, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
   taskRowSelected: { borderColor: colors.primary, borderWidth: 2 },
   taskRowDisabled: { opacity: 0.5 },
   taskRowTitle: { fontSize: 14, fontWeight: "700", color: colors.text },

@@ -3,7 +3,7 @@ import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet
 import { useFocusEffect } from "@react-navigation/native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getGroup, GroupMemberInfo, leaveGroup } from "../../api/groups";
+import { AllMembersEntry, getAllGroupMembers, getGroup, leaveGroup } from "../../api/groups";
 import { blockUser, getBlockedUsers, unblockUser } from "../../api/profile";
 import { addFavourite, getFavourites, removeFavourite } from "../../api/search";
 import { useAuth } from "../../context/AuthContext";
@@ -24,9 +24,18 @@ export default function CompleteTribeScreen({ route, navigation }: any) {
   const toast = useToast();
   const [message, setMessage] = useState("");
 
-  const { data: group, isLoading, refetch } = useQuery({
-    queryKey: ["group", groupId],
-    queryFn: () => getGroup(groupId),
+  const { data: group } = useQuery({ queryKey: ["group", groupId], queryFn: () => getGroup(groupId) });
+  // The full guest list (everyone who was ever in the Tribe, not just who's
+  // still around) - separate from getGroup, which only returns active
+  // members. Refetches on an interval + focus so it updates live as others
+  // complete their own goodbye.
+  const {
+    data: allMembers,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["group-all-members", groupId],
+    queryFn: () => getAllGroupMembers(groupId),
     refetchInterval: 5000,
   });
   const { data: favourites } = useQuery({ queryKey: ["favourites"], queryFn: getFavourites });
@@ -39,6 +48,8 @@ export default function CompleteTribeScreen({ route, navigation }: any) {
     }, [refetch])
   );
 
+  const otherMembers = (allMembers ?? []).filter((m) => m.userId !== profile?.id);
+
   const completeMutation = useMutation({
     mutationFn: () => leaveGroup(groupId, message.trim() || undefined),
     onSuccess: () => {
@@ -50,7 +61,7 @@ export default function CompleteTribeScreen({ route, navigation }: any) {
     onError: () => toast.show("Couldn't leave the Tribe - please try again."),
   });
 
-  if (isLoading || !group) {
+  if (isLoading || !allMembers) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -62,12 +73,12 @@ export default function CompleteTribeScreen({ route, navigation }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <FlatList
         contentContainerStyle={styles.listContent}
-        data={group.members}
+        data={otherMembers}
         keyExtractor={(m) => m.userId}
         ListHeaderComponent={
           <View style={styles.header}>
             <Ionicons name="checkmark-circle" size={32} color={colors.primary} />
-            <Text style={styles.title}>{groupName ?? group.name} is done!</Text>
+            <Text style={styles.title}>{groupName ?? group?.name ?? "This Tribe"} is done!</Text>
             <Text style={styles.subtitle}>
               Say goodbye, favourite anyone you'd want to work with again, and leave whenever you're ready. Once
               everyone's left, this Tribe wraps up for good.
@@ -77,7 +88,6 @@ export default function CompleteTribeScreen({ route, navigation }: any) {
         renderItem={({ item }) => (
           <MemberRow
             member={item}
-            isSelf={item.userId === profile?.id}
             isFavourite={favourites?.some((f) => f.userId === item.userId) ?? false}
             isBlocked={blocked?.some((b) => b.userId === item.userId) ?? false}
             onPress={() => navigation.navigate("PublicProfile", { userId: item.userId })}
@@ -118,13 +128,11 @@ export default function CompleteTribeScreen({ route, navigation }: any) {
 
 function MemberRow({
   member,
-  isSelf,
   isFavourite,
   isBlocked,
   onPress,
 }: {
-  member: GroupMemberInfo;
-  isSelf: boolean;
+  member: AllMembersEntry;
   isFavourite: boolean;
   isBlocked: boolean;
   onPress: () => void;
@@ -143,7 +151,7 @@ function MemberRow({
 
   return (
     <View style={styles.card}>
-      <TouchableOpacity style={styles.identity} onPress={onPress} disabled={isSelf}>
+      <TouchableOpacity style={styles.identity} onPress={onPress}>
         <Avatar name={member.firstName} photoUrl={member.photoUrl} size={44} />
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
@@ -152,30 +160,38 @@ function MemberRow({
             </Text>
             {member.isPro && <ProBadge size="tiny" />}
           </View>
-          {isSelf && <Text style={styles.selfTag}>You</Text>}
+          {member.status === "LEFT" && <Text style={styles.selfTag}>Already left</Text>}
         </View>
-        {!isSelf && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </TouchableOpacity>
-      {!isSelf && (
-        <View style={styles.actions}>
+      <View style={styles.actions}>
           <AnimatedPressable
             style={[styles.actionButton, isFavourite && styles.actionButtonActive]}
-            onPress={() => favouriteMutation.mutate()}
+            onPress={() => !favouriteMutation.isPending && favouriteMutation.mutate()}
+            disabled={favouriteMutation.isPending}
           >
-            <Ionicons name={isFavourite ? "star" : "star-outline"} size={14} color={isFavourite ? "#fff" : colors.star} />
+            {favouriteMutation.isPending ? (
+              <ActivityIndicator size="small" color={isFavourite ? "#fff" : colors.star} />
+            ) : (
+              <Ionicons name={isFavourite ? "star" : "star-outline"} size={14} color={isFavourite ? "#fff" : colors.star} />
+            )}
             <Text style={[styles.actionButtonText, isFavourite && styles.actionButtonTextActive]}>
               {isFavourite ? "Favourited" : "Favourite"}
             </Text>
           </AnimatedPressable>
           <AnimatedPressable
             style={[styles.actionButton, styles.dangerButton, isBlocked && styles.dangerButtonActive]}
-            onPress={() => blockMutation.mutate()}
+            onPress={() => !blockMutation.isPending && blockMutation.mutate()}
+            disabled={blockMutation.isPending}
           >
-            <Ionicons name={isBlocked ? "lock-open" : "lock-closed"} size={14} color={isBlocked ? "#fff" : colors.danger} />
+            {blockMutation.isPending ? (
+              <ActivityIndicator size="small" color={isBlocked ? "#fff" : colors.danger} />
+            ) : (
+              <Ionicons name={isBlocked ? "lock-open" : "lock-closed"} size={14} color={isBlocked ? "#fff" : colors.danger} />
+            )}
             <Text style={[styles.dangerButtonText, isBlocked && styles.actionButtonTextActive]}>{isBlocked ? "Unblock" : "Block"}</Text>
           </AnimatedPressable>
-        </View>
-      )}
+      </View>
     </View>
   );
 }

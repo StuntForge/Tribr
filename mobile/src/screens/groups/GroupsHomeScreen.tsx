@@ -82,7 +82,7 @@ export default function GroupsHomeScreen({ navigation }: any) {
         />
         <MenuButton
           icon="mail-open"
-          label="Invitations"
+          label="Invitations & Applications"
           badge={invitationCount > 0 ? invitationCount : undefined}
           onPress={() => navigation.navigate("MyInvitations")}
         />

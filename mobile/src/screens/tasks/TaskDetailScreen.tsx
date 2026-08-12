@@ -7,6 +7,7 @@ import { jobLengthLabel } from "../../constants/jobLength";
 import { inviteMember } from "../../api/groups";
 import { useAuth } from "../../context/AuthContext";
 import PhotoGallery from "../../components/PhotoGallery";
+import { useToast } from "../../components/Toast";
 import { colors, radii, shadows, spacing, type } from "../../theme";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -29,28 +30,40 @@ export default function TaskDetailScreen({ route, navigation }: any) {
   };
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const { data: task, isLoading } = useQuery({ queryKey: ["public-task", taskId], queryFn: () => getPublicTask(taskId) });
 
   const inviteMutation = useMutation({
     mutationFn: () => inviteMember(groupIdToInviteTo!, invitedUserId!, taskId),
     onSuccess: () => navigation.goBack(),
+    onError: () => toast.show("Couldn't send the invite - please try again."),
   });
 
+  // Navigates away immediately on confirm (see confirmWithdraw) instead of
+  // waiting on the request - a failure (e.g. the application was already
+  // decided) surfaces via toast since this screen is already gone.
   const withdrawMutation = useMutation({
     mutationFn: () => withdrawTaskApplication(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["public-task", taskId] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["my-applications"] });
-      navigation.goBack();
     },
+    onError: (e: any) => toast.show(e?.message ?? "Couldn't withdraw the application - please try again."),
   });
 
   const confirmWithdraw = () => {
     Alert.alert("Withdraw application?", "This frees up this task so you can submit it elsewhere.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Withdraw", style: "destructive", onPress: () => withdrawMutation.mutate() },
+      {
+        text: "Withdraw",
+        style: "destructive",
+        onPress: () => {
+          navigation.goBack();
+          withdrawMutation.mutate();
+        },
+      },
     ]);
   };
 

@@ -90,18 +90,28 @@ function MemberRow({
         <View style={styles.actions}>
           <AnimatedPressable
             style={[styles.actionButton, isFavourite && styles.actionButtonActive]}
-            onPress={() => favouriteMutation.mutate()}
+            onPress={() => !favouriteMutation.isPending && favouriteMutation.mutate()}
+            disabled={favouriteMutation.isPending}
           >
-            <Ionicons name={isFavourite ? "star" : "star-outline"} size={14} color={isFavourite ? "#fff" : colors.star} />
+            {favouriteMutation.isPending ? (
+              <ActivityIndicator size="small" color={isFavourite ? "#fff" : colors.star} />
+            ) : (
+              <Ionicons name={isFavourite ? "star" : "star-outline"} size={14} color={isFavourite ? "#fff" : colors.star} />
+            )}
             <Text style={[styles.actionButtonText, isFavourite && styles.actionButtonTextActive]}>
               {isFavourite ? "Favourited" : "Favourite"}
             </Text>
           </AnimatedPressable>
           <AnimatedPressable
             style={[styles.actionButton, styles.dangerButton, isBlocked && styles.dangerButtonActive]}
-            onPress={() => blockMutation.mutate()}
+            onPress={() => !blockMutation.isPending && blockMutation.mutate()}
+            disabled={blockMutation.isPending}
           >
-            <Ionicons name={isBlocked ? "lock-open" : "lock-closed"} size={14} color={isBlocked ? "#fff" : colors.danger} />
+            {blockMutation.isPending ? (
+              <ActivityIndicator size="small" color={isBlocked ? "#fff" : colors.danger} />
+            ) : (
+              <Ionicons name={isBlocked ? "lock-open" : "lock-closed"} size={14} color={isBlocked ? "#fff" : colors.danger} />
+            )}
             <Text style={[styles.dangerButtonText, isBlocked && styles.actionButtonTextActive]}>
               {isBlocked ? "Unblock" : "Block"}
             </Text>

@@ -1016,6 +1016,34 @@ router.post("/groups/:id/applications/:appId/withdraw", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Anyone who's ever been a member can see everyone who was ever in the
+// Tribe, active or already left - the wrap-up/goodbye screen needs the full
+// guest list, not one that shrinks as people complete their own goodbye.
+router.get("/groups/:id/all-members", async (req, res) => {
+  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
+  if (!group) return res.status(404).json({ error: "Group not found." });
+
+  const everMember = await prisma.groupMember.findFirst({ where: { groupId: group.id, userId: req.userId } });
+  if (!everMember) return res.status(403).json({ error: "You were never a member of this Tribe." });
+
+  const members = await prisma.groupMember.findMany({
+    where: { groupId: group.id },
+    include: { user: true },
+    orderBy: { joinedAt: "asc" },
+  });
+
+  res.json(
+    members.map((m) => ({
+      userId: m.userId,
+      firstName: m.user.firstName,
+      photoUrl: m.user.profilePhotoUrl,
+      isLeader: m.isLeader,
+      isPro: m.user.subscriptionTier === "SUBSCRIBER",
+      status: m.status,
+    }))
+  );
+});
+
 // ---------- Invitations (7.8) ----------
 
 // 7.10 - members who've left this group before, easy to invite back for a new cycle.

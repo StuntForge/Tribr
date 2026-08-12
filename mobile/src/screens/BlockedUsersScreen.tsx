@@ -65,8 +65,16 @@ export default function BlockedUsersScreen({ navigation }: any) {
           <View style={styles.card}>
             <Avatar name={item.firstName} photoUrl={item.profilePhotoUrl} size={40} />
             <Text style={styles.name}>{item.firstName ?? "Member"}</Text>
-            <AnimatedPressable style={styles.unblockButton} onPress={() => unblockMutation.mutate(item.userId)}>
-              <Text style={styles.unblockButtonText}>Unblock</Text>
+            <AnimatedPressable
+              style={styles.unblockButton}
+              onPress={() => !unblockMutation.isPending && unblockMutation.mutate(item.userId)}
+              disabled={unblockMutation.isPending && unblockMutation.variables === item.userId}
+            >
+              {unblockMutation.isPending && unblockMutation.variables === item.userId ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.unblockButtonText}>Unblock</Text>
+              )}
             </AnimatedPressable>
           </View>
         )}

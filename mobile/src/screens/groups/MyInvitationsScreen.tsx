@@ -14,6 +14,7 @@ import { jobLengthLabelShort } from "../../constants/jobLength";
 import ProBadge from "../../components/ProBadge";
 import SegmentedTabs from "../../components/SegmentedTabs";
 import SortSelect from "../../components/SortSelect";
+import { useToast } from "../../components/Toast";
 import { colors, radii, shadows, spacing } from "../../theme";
 
 type SortKey = "distance" | "members";
@@ -27,6 +28,7 @@ const APPLICATION_STATUS_LABEL: Record<MyApplication["status"], string> = {
 
 export default function MyInvitationsScreen({ route, navigation }: any) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>(route?.params?.initialTab === "applications" ? "applications" : "invitations");
   const [sort, setSort] = useState<SortKey>("distance");
 
@@ -62,11 +64,13 @@ export default function MyInvitationsScreen({ route, navigation }: any) {
       const groupId = invitations?.find((i) => i.id === variables.id)?.group.id;
       if (variables.accept && groupId) navigation.navigate("GroupDetail", { groupId });
     },
+    onError: (e: any) => toast.show(e?.message ?? "Something went wrong - please try again."),
   });
 
   const withdrawMutation = useMutation({
     mutationFn: ({ groupId, appId }: { groupId: string; appId: string }) => withdrawApplication(groupId, appId),
     onSuccess: invalidate,
+    onError: (e: any) => toast.show(e?.message ?? "Couldn't withdraw the application - please try again."),
   });
 
   const confirmWithdraw = (application: MyApplication) => {

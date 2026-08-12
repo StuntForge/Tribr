@@ -163,6 +163,19 @@ export function getGroup(id: string) {
   return apiFetch<GroupDetail>(`/api/groups/${id}`);
 }
 
+export interface AllMembersEntry {
+  userId: string;
+  firstName: string | null;
+  photoUrl: string | null;
+  isLeader: boolean;
+  isPro: boolean;
+  status: "ACTIVE" | "LEFT";
+}
+
+export function getAllGroupMembers(id: string) {
+  return apiFetch<AllMembersEntry[]>(`/api/groups/${id}/all-members`);
+}
+
 export interface CreateGroupInput {
   name: string;
   description: string;
