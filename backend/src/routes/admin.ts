@@ -149,9 +149,12 @@ router.post("/users/:id/test-push", async (req, res) => {
   if (!user) return res.status(404).json({ error: "User not found." });
   if (!user.expoPushToken) return res.status(400).json({ error: "This user has no registered push token." });
 
-  await sendPushToUsers([req.params.id], "Test notification", "If you can see this, push notifications are working.", {
+  const result = await sendPushToUsers([req.params.id], "Test notification", "If you can see this, push notifications are working.", {
     type: "ANNOUNCEMENT",
   });
+  if (result.sent === 0) {
+    return res.status(502).json({ error: result.errors[0] ?? "Expo did not accept the notification for delivery." });
+  }
   res.json({ ok: true });
 });
 
