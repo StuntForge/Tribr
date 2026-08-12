@@ -169,7 +169,7 @@ export default function EditProfileScreen({ navigation }: any) {
       </View>
       <Text style={styles.hint}>Set when you created your account and can't be changed.</Text>
 
-      <FieldLabel icon="location" label="Postcode" />
+      <FieldLabel icon="location" label="Location" />
       <Text style={styles.hint}>Currently set to {profile?.locationLabel || "not set"}. Your exact address is never shown.</Text>
       <PostcodeInput
         postcode={postcode}

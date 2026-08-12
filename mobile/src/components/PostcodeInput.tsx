@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, spacing } from "../theme";
+import { reverseGeocode, searchPlaces } from "../api/geocode";
+import { colors, radii, spacing } from "../theme";
 
 export interface ResolvedLocation {
   postcode: string;
@@ -11,71 +12,65 @@ export interface ResolvedLocation {
   lng: number;
 }
 
-// postcodes.io is a free, keyless, open-data UK postcode API - used instead
-// of expo-location's native reverse/forward geocoding so typing a postcode
-// works with just a network call (no location permission needed), and so
-// "use my current location" only needs raw GPS coords from expo-location,
-// not its native geocoder.
-async function lookupPostcode(raw: string): Promise<ResolvedLocation | null> {
-  const postcode = raw.trim();
-  if (!postcode) return null;
-  const res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
-  const json = await res.json();
-  if (json.status !== 200 || !json.result) return null;
-  const r = json.result;
-  return {
-    postcode: r.postcode,
-    label: [r.admin_district, r.postcode].filter(Boolean).join(", "),
-    lat: r.latitude,
-    lng: r.longitude,
-  };
-}
-
-async function reverseLookup(lat: number, lng: number): Promise<ResolvedLocation | null> {
-  const res = await fetch(`https://api.postcodes.io/postcodes?lon=${lng}&lat=${lat}&limit=1`);
-  const json = await res.json();
-  const r = json.result?.[0];
-  if (!r) return null;
-  return {
-    postcode: r.postcode,
-    label: [r.admin_district, r.postcode].filter(Boolean).join(", "),
-    lat: r.latitude,
-    lng: r.longitude,
-  };
-}
-
+// Live address/place autocomplete backed by Mapbox (proxied through the
+// backend - see api/geocode.ts), verified against a real place database so
+// results land in the right spot on the map. Prop names are kept from the
+// original UK-postcode-only version (postcodes.io) rather than renamed,
+// since every screen that uses this component only cares about the
+// resolved {label, lat, lng} - swapping the search provider needed no
+// changes anywhere else.
 export default function PostcodeInput({
   postcode,
   onChangePostcode,
   onResolved,
-  placeholder = "e.g. BS1 4ST",
+  placeholder = "Start typing an address or place…",
 }: {
   postcode: string;
   onChangePostcode: (v: string) => void;
   onResolved: (result: ResolvedLocation) => void;
   placeholder?: string;
 }) {
-  const [checking, setChecking] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ label: string; lat: number; lng: number }[]>([]);
+  const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards against a slow, stale search response landing after the user has
+  // already picked a suggestion or kept typing past it.
+  const requestIdRef = useRef(0);
 
-  const checkPostcode = async (value: string) => {
-    if (!value.trim()) return;
-    setChecking(true);
-    setError(null);
-    try {
-      const result = await lookupPostcode(value);
-      if (!result) {
-        setError("That doesn't look like a valid UK postcode.");
-        return;
-      }
-      onChangePostcode(result.postcode);
-      onResolved(result);
-    } catch {
-      setError("Couldn't check that postcode - check your connection and try again.");
-    } finally {
-      setChecking(false);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const query = postcode.trim();
+    if (query.length < 3) {
+      setSuggestions([]);
+      setSearching(false);
+      return;
     }
+    setSearching(true);
+    const requestId = ++requestIdRef.current;
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchPlaces(query);
+        if (requestIdRef.current === requestId) setSuggestions(results);
+      } catch {
+        if (requestIdRef.current === requestId) setSuggestions([]);
+      } finally {
+        if (requestIdRef.current === requestId) setSearching(false);
+      }
+    }, 350);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postcode]);
+
+  const selectSuggestion = (s: { label: string; lat: number; lng: number }) => {
+    requestIdRef.current++; // invalidate any in-flight search
+    setSuggestions([]);
+    setError(null);
+    onChangePostcode(s.label);
+    onResolved({ postcode: s.label, label: s.label, lat: s.lat, lng: s.lng });
   };
 
   const useCurrentLocation = async () => {
@@ -84,19 +79,18 @@ export default function PostcodeInput({
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
-        setError("Location access is needed to find your postcode automatically.");
+        setError("Location access is needed to find your address automatically.");
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
-      const result = await reverseLookup(position.coords.latitude, position.coords.longitude);
+      const result = await reverseGeocode(position.coords.latitude, position.coords.longitude);
       if (!result) {
-        setError("Couldn't find a postcode for your location. Enter it manually instead.");
+        setError("Couldn't find an address for your location. Enter it manually instead.");
         return;
       }
-      onChangePostcode(result.postcode);
-      onResolved(result);
+      selectSuggestion(result);
     } catch {
-      setError("Couldn't determine your location. Enter your postcode manually instead.");
+      setError("Couldn't determine your location. Enter your address manually instead.");
     } finally {
       setLocating(false);
     }
@@ -111,9 +105,7 @@ export default function PostcodeInput({
           onChangePostcode(v);
           setError(null);
         }}
-        onBlur={() => checkPostcode(postcode)}
         placeholder={placeholder}
-        autoCapitalize="characters"
         autoCorrect={false}
       />
       <TouchableOpacity onPress={useCurrentLocation} style={styles.linkButton} disabled={locating}>
@@ -126,7 +118,26 @@ export default function PostcodeInput({
           </View>
         )}
       </TouchableOpacity>
-      {checking && <Text style={styles.hint}>Checking postcode…</Text>}
+
+      {searching && <Text style={styles.hint}>Searching…</Text>}
+
+      {suggestions.length > 0 && (
+        <View style={styles.suggestionList}>
+          {suggestions.map((s, i) => (
+            <TouchableOpacity
+              key={`${s.lat},${s.lng},${i}`}
+              style={[styles.suggestionRow, i !== suggestions.length - 1 && styles.suggestionRowDivider]}
+              onPress={() => selectSuggestion(s)}
+            >
+              <Ionicons name="location-outline" size={15} color={colors.textMuted} />
+              <Text style={styles.suggestionText} numberOfLines={2}>
+                {s.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
@@ -146,4 +157,15 @@ const styles = StyleSheet.create({
   linkButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   hint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.xs },
   error: { fontSize: 12, color: colors.danger, marginTop: spacing.xs },
+  suggestionList: {
+    marginTop: spacing.xs,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    overflow: "hidden",
+  },
+  suggestionRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, padding: spacing.sm },
+  suggestionRowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  suggestionText: { flex: 1, fontSize: 13, color: colors.text },
 });

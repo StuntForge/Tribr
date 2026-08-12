@@ -65,7 +65,7 @@ export default function CreateProfileScreen() {
     if (!firstName.trim()) missing.push("first name");
     if (age == null) missing.push("age");
     if (!gender) missing.push("gender");
-    if (!locationLabel.trim()) missing.push("postcode");
+    if (!locationLabel.trim()) missing.push("location");
     if (!bio.trim()) missing.push("biography");
     if (missing.length > 0) {
       setError(`Please fill in: ${missing.join(", ")}.`);
@@ -133,7 +133,7 @@ export default function CreateProfileScreen() {
         ))}
       </View>
 
-      <Text style={styles.label}>Postcode</Text>
+      <Text style={styles.label}>Location</Text>
       <Text style={styles.hint}>Used to find Tribes and helpers near you. Your exact address is never shown.</Text>
       <PostcodeInput
         postcode={postcode}

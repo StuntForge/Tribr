@@ -16,6 +16,7 @@ import subscriptionRoutes from "./routes/subscription";
 import stripeWebhookRoutes from "./routes/stripeWebhook";
 import adminRoutes from "./routes/admin";
 import internalRoutes from "./routes/internal";
+import geocodeRoutes from "./routes/geocode";
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use("/api/uploads", uploadRoutes);
 app.use("/api/dev", devRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/internal", internalRoutes);
+app.use("/api", geocodeRoutes);
 
 app.use("/api", profileRoutes);
 app.use("/api", taskRoutes);

@@ -350,7 +350,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       </View>
       {locationType === "CHOOSE" && (
         <>
-          <FieldLabel icon="navigate" label="Postcode" />
+          <FieldLabel icon="navigate" label="Location" />
           <PostcodeInput
             postcode={postcode}
             onChangePostcode={setPostcode}
