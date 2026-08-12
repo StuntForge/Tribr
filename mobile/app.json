@@ -58,6 +58,7 @@
       [
         "expo-notifications",
         {
+          "icon": "./assets/android-icon-monochrome.png",
           "color": "#1B3A2C"
         }
       ]
