@@ -40,8 +40,3 @@ services:
       # the DIGEST_SECRET repo secret used by .github/workflows/hourly-digest.yml
       - key: DIGEST_SECRET
         sync: false
-      # Mapbox access token (free tier, no card required) - powers address
-      # autocomplete via /api/geocode/*. Get one at mapbox.com -> Account ->
-      # Tokens (the default public token works fine).
-      - key: MAPBOX_ACCESS_TOKEN
-        sync: false
