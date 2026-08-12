@@ -31,6 +31,7 @@ export default function EditProfileScreen({ navigation }: any) {
   const [allergyDetail, setAllergyDetail] = useState(profile?.allergyDetail ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const toggleDietary = (option: string) => {
     setDietaryState((prev) => (prev.includes(option) ? prev.filter((d) => d !== option) : [...prev, option]));
@@ -52,16 +53,23 @@ export default function EditProfileScreen({ navigation }: any) {
     });
     if (!result.canceled && result.assets[0]) {
       setPhotoLocalUri(result.assets[0].uri);
+      setUploadingPhoto(true);
       try {
         const { url } = await uploadPhoto(result.assets[0].uri);
         setPhotoUrl(url);
       } catch (e: any) {
         setError(e.message ?? "Could not upload photo.");
+      } finally {
+        setUploadingPhoto(false);
       }
     }
   };
 
-  const canSubmit = firstName.trim().length > 0 && locationLabel.trim().length > 0 && bio.trim().length > 0 && photoUrl;
+  // canSubmit alone isn't enough - photoUrl still holds the *previous*
+  // photo's URL while a newly-picked one is mid-upload, so Save was able to
+  // fire early and silently persist the old photo instead of the new one.
+  const canSubmit =
+    firstName.trim().length > 0 && locationLabel.trim().length > 0 && bio.trim().length > 0 && photoUrl && !uploadingPhoto;
 
   const onSubmit = async () => {
     setError(null);
@@ -119,6 +127,7 @@ export default function EditProfileScreen({ navigation }: any) {
         <TouchableOpacity
           style={styles.photoPicker}
           onPress={pickPhoto}
+          disabled={uploadingPhoto}
           accessibilityLabel="Change profile photo"
           accessibilityRole="button"
         >
@@ -126,6 +135,11 @@ export default function EditProfileScreen({ navigation }: any) {
             <Image source={{ uri: photoLocalUri ?? photoUrl! }} style={styles.photo} />
           ) : (
             <Text style={styles.photoPickerText}>Add profile photo</Text>
+          )}
+          {uploadingPhoto && (
+            <View style={styles.photoUploadingOverlay}>
+              <ActivityIndicator color="#fff" />
+            </View>
           )}
           <View style={styles.cameraBadge}>
             <Ionicons name="camera" size={14} color={colors.primary} />
@@ -236,6 +250,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   photo: { width: "100%", height: "100%" },
+  photoUploadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   photoPickerText: { color: "#fff", fontSize: 12, textAlign: "center", paddingHorizontal: spacing.sm },
   cameraBadge: {
     position: "absolute",

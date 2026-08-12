@@ -1381,7 +1381,12 @@ router.post("/groups/:id/leave", async (req, res) => {
   if (group.state === "COMPLETED") {
     const remainingActive = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
     if (remainingActive === 0) {
-      await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+      // Stays COMPLETED rather than becoming DISBANDED - that state is for
+      // a leader disbanding a Tribe outright (a failure/early-exit outcome),
+      // not for one that finished its work and wound down normally. It's
+      // already invisible everywhere active: /groups/mine is scoped to the
+      // caller's own ACTIVE membership, so with nobody left ACTIVE there's
+      // no one left to see it there regardless of state.
       await sendFarewellReport(group.id, group.name);
     }
   }

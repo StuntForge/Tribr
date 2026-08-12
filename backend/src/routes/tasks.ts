@@ -156,11 +156,17 @@ router.post("/tasks/:id/withdraw-application", async (req, res) => {
     where: { taskId: task.id, applicantId: req.userId, status: { in: ["PENDING", "TASK_REQUESTED", "TASK_SUGGESTED"] } },
     orderBy: { createdAt: "desc" },
   });
-  if (!application) return res.status(404).json({ error: "No open application found for this task." });
+  // A SUBMITTED task with no matching open application is an inconsistent
+  // state that shouldn't happen, but has been observed - always let the
+  // owner free their own task rather than leaving them permanently stuck,
+  // even if there's nothing to mark WITHDRAWN on the application side.
+  if (!application) {
+    console.error(`Task ${task.id} was SUBMITTED with no open application for user ${req.userId} - releasing anyway.`);
+  }
 
   await prisma.$transaction([
     prisma.task.update({ where: { id: task.id }, data: { status: "AVAILABLE", groupId: null, cycleId: null } }),
-    prisma.groupApplication.update({ where: { id: application.id }, data: { status: "WITHDRAWN" } }),
+    ...(application ? [prisma.groupApplication.update({ where: { id: application.id }, data: { status: "WITHDRAWN" } })] : []),
   ]);
 
   res.json({ ok: true });

@@ -59,7 +59,7 @@ export default function GroupsStack() {
         name="GroupHistory"
         component={GroupHistoryScreen}
         options={({ navigation }) => ({
-          title: "Tribes You've Been In",
+          title: "Tribe History",
           // Same fix as CompletedTasks in TasksStack: reached from Home's
           // stat tile, which can be this tab's first navigation this
           // session - the default back button can end up with no history

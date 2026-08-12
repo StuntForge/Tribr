@@ -8,14 +8,12 @@ import ProBadge from "../components/ProBadge";
 import Reveal from "../components/Reveal";
 import WaveHeader from "../components/WaveHeader";
 import IconCircle from "../components/IconCircle";
-import { diagnosePushNotifications } from "../hooks/usePushNotifications";
 import { colors, radii, shadows, spacing, type } from "../theme";
 
 const HEADER_DECORATION = require("../../assets/illustrations/processed/settings-header.png");
 
 export default function ProfileScreen({ navigation }: any) {
   const { profile, signOut } = useAuth();
-  const [checkingPush, setCheckingPush] = React.useState(false);
 
   if (!profile) return null;
 
@@ -24,22 +22,6 @@ export default function ProfileScreen({ navigation }: any) {
       { text: "Cancel", style: "cancel" },
       { text: "Sign out", style: "destructive", onPress: signOut },
     ]);
-  };
-
-  const checkPushNotifications = async () => {
-    setCheckingPush(true);
-    try {
-      const result = await diagnosePushNotifications();
-      const lines = result.steps.map((s) => `${s.ok ? "OK" : "FAILED"} - ${s.label}${s.detail ? `: ${s.detail}` : ""}`);
-      Alert.alert(
-        result.success ? "Push notifications are set up" : "Push notifications aren't working",
-        lines.join("\n")
-      );
-    } catch (e: any) {
-      Alert.alert("Something went wrong", e?.message ?? String(e));
-    } finally {
-      setCheckingPush(false);
-    }
   };
 
   let cardIndex = 0;
@@ -117,12 +99,6 @@ export default function ProfileScreen({ navigation }: any) {
         <AnimatedPressable style={styles.settingsRow} onPress={() => navigation.navigate("Tutorial")}>
           <IconCircle icon="book" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
           <Text style={styles.settingsRowText}>Replay tutorial</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </AnimatedPressable>
-
-        <AnimatedPressable style={styles.settingsRow} onPress={checkPushNotifications} disabled={checkingPush}>
-          <IconCircle icon="notifications" size={36} bg={colors.surfaceAlt} color={colors.primary} iconSize={17} />
-          <Text style={styles.settingsRowText}>{checkingPush ? "Checking…" : "Check push notifications"}</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </AnimatedPressable>
 
