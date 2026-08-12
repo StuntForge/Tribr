@@ -28,6 +28,7 @@ import { uploadPhoto } from "../../api/uploads";
 import PostcodeInput from "../../components/PostcodeInput";
 import WaveHeader from "../../components/WaveHeader";
 import AnimatedPressable from "../../components/AnimatedPressable";
+import { useToast } from "../../components/Toast";
 import FieldLabel from "../../components/FieldLabel";
 import IllustrationCard from "../../components/IllustrationCard";
 import { Ionicons } from "@expo/vector-icons";
@@ -39,6 +40,7 @@ const HEADER_IMAGE = require("../../../assets/illustrations/processed/add-a-task
 export default function CreateEditTaskScreen({ route, navigation }: any) {
   const taskId: string | undefined = route.params?.taskId;
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories });
   const { data: existingTask, isLoading: loadingTask } = useQuery({
@@ -105,13 +107,13 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
+  // Navigates away immediately on confirm (see confirmDelete) instead of
+  // waiting on the request - a failure surfaces via toast since this screen
+  // is already gone by the time it could happen.
   const deleteMutation = useMutation({
     mutationFn: () => deleteTask(taskId!),
-    onSuccess: () => {
-      invalidate();
-      navigation.goBack();
-    },
-    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+    onSuccess: invalidate,
+    onError: () => toast.show("Couldn't delete the task - please try again."),
   });
 
   const removePhotoMutation = useMutation({
@@ -121,20 +123,14 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
 
   const archiveMutation = useMutation({
     mutationFn: () => archiveTask(taskId!),
-    onSuccess: () => {
-      invalidate();
-      navigation.goBack();
-    },
-    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+    onSuccess: invalidate,
+    onError: () => toast.show("Couldn't archive the task - please try again."),
   });
 
   const activateMutation = useMutation({
     mutationFn: () => activateTask(taskId!),
-    onSuccess: () => {
-      invalidate();
-      navigation.goBack();
-    },
-    onError: (e: any) => setError(e.message ?? "Something went wrong."),
+    onSuccess: invalidate,
+    onError: () => toast.show("Couldn't activate the task - please try again."),
   });
 
   const MAX_PHOTOS = 4;
@@ -227,7 +223,14 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   const confirmDelete = () => {
     Alert.alert("Delete task", "This can't be undone.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate() },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          navigation.goBack();
+          deleteMutation.mutate();
+        },
+      },
     ]);
   };
 
@@ -237,7 +240,13 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       "It'll be shelved out of your active tasks and won't count toward your task limit. You can activate it again any time.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Archive", onPress: () => archiveMutation.mutate() },
+        {
+          text: "Archive",
+          onPress: () => {
+            navigation.goBack();
+            archiveMutation.mutate();
+          },
+        },
       ]
     );
   };
@@ -399,8 +408,15 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
       {error && <Text style={styles.error}>{error}</Text>}
 
       {isArchived ? (
-        <TouchableOpacity style={styles.primaryButton} onPress={() => activateMutation.mutate()} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Activate task</Text>}
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => {
+            navigation.goBack();
+            activateMutation.mutate();
+          }}
+          disabled={busy}
+        >
+          <Text style={styles.primaryButtonText}>Activate task</Text>
         </TouchableOpacity>
       ) : (
         <View style={styles.actions}>
