@@ -19,6 +19,7 @@ import {
   startWork,
 } from "../../api/groups";
 import { getMyTasks } from "../../api/tasks";
+import { getActionItems } from "../../api/notifications";
 import { useAuth } from "../../context/AuthContext";
 import TaskSelectRow from "../../components/TaskSelectRow";
 import Avatar from "../../components/Avatar";
@@ -47,6 +48,8 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const [manageMode, setManageMode] = useState(false);
 
   const { data: group, isLoading } = useQuery({ queryKey: ["group", groupId], queryFn: () => getGroup(groupId) });
+  const { data: actionItems } = useQuery({ queryKey: ["action-items"], queryFn: getActionItems });
+  const myActionItems = (actionItems ?? []).filter((a) => a.groupId === groupId);
   const { data: tasks } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks });
   const availableTasks = tasks?.filter((t) => t.status === "AVAILABLE") ?? [];
 
@@ -74,7 +77,14 @@ export default function GroupDetailScreen({ route, navigation }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
   const leaveMutation = useAction(() => leaveGroup(groupId));
-  const disbandMutation = useAction(() => disbandGroup(groupId));
+  // Disband navigates away immediately on confirm (see confirmDisband) rather
+  // than waiting for the request, so its own error can't show inline on a
+  // screen the user has already left - a toast is the only way to surface it.
+  const disbandMutation = useMutation({
+    mutationFn: () => disbandGroup(groupId),
+    onSuccess: invalidate,
+    onError: () => toast.show("Couldn't disband the Tribe - please try again."),
+  });
   const startWorkMutation = useAction(() => startWork(groupId));
   const deferMutation = useAction((taskId: string) => deferTask(groupId, taskId));
   const forgoMutation = useAction((taskId: string) => forgoTask(groupId, taskId));
@@ -121,7 +131,14 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const confirmDisband = () => {
     Alert.alert("Disband Tribe", "This can't be undone. Any pending applications will be released.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Disband", style: "destructive", onPress: () => disbandMutation.mutate(undefined as never) },
+      {
+        text: "Disband",
+        style: "destructive",
+        onPress: () => {
+          navigation.navigate("GroupsHome");
+          disbandMutation.mutate(undefined as never);
+        },
+      },
     ]);
   };
 
@@ -408,15 +425,20 @@ export default function GroupDetailScreen({ route, navigation }: any) {
       {myActiveQueueTask && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Your task is active</Text>
+          {!myActiveQueueTask.workDayConfirmed && (
+            <Text style={styles.hint}>Confirm a work date before you can mark this task complete.</Text>
+          )}
           <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.primaryButtonSmall}
-              onPress={() =>
-                navigation.navigate("CompleteTask", { groupId, taskId: myActiveQueueTask.taskId, taskName: myActiveQueueTask.taskName })
-              }
-            >
-              <Text style={styles.primaryButtonText}>Mark complete</Text>
-            </TouchableOpacity>
+            {myActiveQueueTask.workDayConfirmed && (
+              <TouchableOpacity
+                style={styles.primaryButtonSmall}
+                onPress={() =>
+                  navigation.navigate("CompleteTask", { groupId, taskId: myActiveQueueTask.taskId, taskName: myActiveQueueTask.taskName })
+                }
+              >
+                <Text style={styles.primaryButtonText}>Mark complete</Text>
+              </TouchableOpacity>
+            )}
             {group.queue.length > 1 && (
               <TouchableOpacity
                 style={[styles.secondaryButtonSmall, busy && styles.buttonDisabled]}
@@ -528,6 +550,17 @@ export default function GroupDetailScreen({ route, navigation }: any) {
           <Text style={styles.hint}>Start Work unlocks once at least {group.sizeMin} members have an approved task.</Text>
         )}
         <View style={styles.actionColumn}>
+          {myActionItems
+            .filter((item) => item.type === "RATE_HOST_PENDING")
+            .map((item) => (
+              <ActionRow
+                key={item.id}
+                icon="star"
+                title="Rate the host"
+                subtitle={item.taskName ? `"${item.taskName}"` : undefined}
+                onPress={() => navigation.navigate("RateHost", { groupId, taskId: item.taskId, taskName: item.taskName })}
+              />
+            ))}
           {group.isLeader && ["RECRUITING", "READY"].includes(group.state) && (
             <>
               <TouchableOpacity

@@ -65,13 +65,13 @@ const calendarTheme = {
   calendarBackground: colors.surface,
 };
 
-export default function TaskScheduleScreen({ route }: any) {
+export default function TaskScheduleScreen({ route, navigation }: any) {
   const { groupId, taskId, taskName } = route.params as { groupId: string; taskId: string; taskName: string };
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [revising, setRevising] = useState(false);
 
-  const { data: schedule, isLoading, refetch } = useQuery({
+  const { data: schedule, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["schedule", groupId, taskId],
     queryFn: () => getSchedule(groupId, taskId),
   });
@@ -123,7 +123,7 @@ export default function TaskScheduleScreen({ route }: any) {
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
-  if (isLoading || !schedule) {
+  if (isLoading || isFetching || !schedule) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -147,7 +147,7 @@ export default function TaskScheduleScreen({ route }: any) {
       <Text style={styles.title}>{taskName}</Text>
 
       {schedule.workDay ? (
-        <ConfirmedView workDay={schedule.workDay} taskName={taskName} />
+        <ConfirmedView workDay={schedule.workDay} taskName={taskName} groupId={groupId} navigation={navigation} />
       ) : schedule.isOwner ? (
         revising ? (
           <View style={styles.section}>
@@ -186,6 +186,7 @@ export default function TaskScheduleScreen({ route }: any) {
             proposal={schedule.proposal}
             onConfirm={(id, food) => confirmMutation.mutate({ dateOptionId: id, foodProvided: food })}
             onRevise={confirmRevise}
+            confirmingId={confirmMutation.isPending ? confirmMutation.variables?.dateOptionId ?? null : null}
           />
         )
       ) : !schedule.proposal ? (
@@ -221,21 +222,34 @@ export default function TaskScheduleScreen({ route }: any) {
 function ConfirmedView({
   workDay,
   taskName,
+  groupId,
+  navigation,
 }: {
   workDay: NonNullable<ScheduleInfo["workDay"]>;
   taskName: string;
+  groupId: string;
+  navigation: any;
 }) {
+  const [addingToCalendar, setAddingToCalendar] = useState(false);
   const dateLabel = workDay.allDay
     ? new Date(workDay.confirmedDate).toDateString()
     : `${new Date(workDay.confirmedDate).toDateString()} ${workDay.startTime}`;
 
   const addToCalendar = async () => {
+    if (addingToCalendar) return;
+    setAddingToCalendar(true);
     try {
       const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
-      if (status !== "granted") return;
+      if (status !== "granted") {
+        setAddingToCalendar(false);
+        return;
+      }
       const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
       const defaultCalendar = calendars.find((c) => c.allowsModifications) ?? calendars[0];
-      if (!defaultCalendar) return;
+      if (!defaultCalendar) {
+        setAddingToCalendar(false);
+        return;
+      }
 
       const start = new Date(workDay!.confirmedDate);
       const end = workDay!.allDay ? new Date(start.getTime() + 24 * 60 * 60 * 1000) : new Date(start.getTime() + 2 * 60 * 60 * 1000);
@@ -247,8 +261,9 @@ function ConfirmedView({
         allDay: workDay!.allDay,
         location: workDay!.address ?? undefined,
       });
-      Alert.alert("Added to calendar");
+      Alert.alert("Added to calendar", undefined, [{ text: "OK", onPress: () => navigation.navigate("GroupDetail", { groupId }) }]);
     } catch {
+      setAddingToCalendar(false);
       Alert.alert("Couldn't add to calendar", "You can add it manually instead.");
     }
   };
@@ -263,8 +278,12 @@ function ConfirmedView({
       ) : (
         <Text style={styles.hint}>No exact address was set for this task.</Text>
       )}
-      <TouchableOpacity style={styles.secondaryButton} onPress={addToCalendar}>
-        <Text style={styles.secondaryButtonText}>Add to calendar</Text>
+      <TouchableOpacity style={styles.secondaryButton} onPress={addToCalendar} disabled={addingToCalendar}>
+        {addingToCalendar ? (
+          <ActivityIndicator color={colors.primary} />
+        ) : (
+          <Text style={styles.secondaryButtonText}>Add to calendar</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -274,10 +293,12 @@ function OwnerReviewView({
   proposal,
   onConfirm,
   onRevise,
+  confirmingId,
 }: {
   proposal: NonNullable<ScheduleInfo["proposal"]>;
   onConfirm: (id: string, foodProvided: boolean) => void;
   onRevise: () => void;
+  confirmingId: string | null;
 }) {
   const [foodByOption, setFoodByOption] = useState<Record<string, boolean>>({});
   const markedDates: Record<string, any> = {};
@@ -325,8 +346,13 @@ function OwnerReviewView({
               <TouchableOpacity
                 style={styles.primaryButtonSmall}
                 onPress={() => onConfirm(option.id, Boolean(foodByOption[option.id]))}
+                disabled={confirmingId != null}
               >
-                <Text style={styles.primaryButtonText}>Confirm this date</Text>
+                {confirmingId === option.id ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Confirm this date</Text>
+                )}
               </TouchableOpacity>
             </View>
           )}
