@@ -42,11 +42,13 @@ export default function EditProfileScreen({ navigation }: any) {
       setError("Photo library access is needed to choose a profile photo.");
       return;
     }
+    // No allowsEditing - the OS's built-in crop screen renders its controls
+    // in a low-contrast overlay that's hard to see. The photo picker circle
+    // already crops to a square via resizeMode "cover", so skipping the
+    // native crop step loses nothing but the confusing UI.
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
-      allowsEditing: true,
-      aspect: [1, 1],
     });
     if (!result.canceled && result.assets[0]) {
       setPhotoLocalUri(result.assets[0].uri);
@@ -100,6 +102,19 @@ export default function EditProfileScreen({ navigation }: any) {
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </AnimatedPressable>
           <Text style={styles.headerTitle}>Edit Profile</Text>
+          <TouchableOpacity
+            onPress={onSubmit}
+            disabled={!canSubmit || submitting}
+            style={styles.headerSaveButton}
+            accessibilityRole="button"
+            accessibilityLabel="Save changes"
+          >
+            {submitting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Ionicons name="checkmark" size={24} color={canSubmit ? "#fff" : "rgba(255,255,255,0.4)"} />
+            )}
+          </TouchableOpacity>
         </View>
         <TouchableOpacity
           style={styles.photoPicker}
@@ -196,22 +211,6 @@ export default function EditProfileScreen({ navigation }: any) {
         </Text>
       )}
 
-      <TouchableOpacity
-        style={[styles.button, !canSubmit && styles.buttonDisabled]}
-        onPress={onSubmit}
-        disabled={!canSubmit || submitting}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canSubmit || submitting }}
-      >
-        {submitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <View style={styles.buttonContent}>
-            <Ionicons name="checkmark-circle" size={18} color="#fff" />
-            <Text style={styles.buttonText}>Save changes</Text>
-          </View>
-        )}
-      </TouchableOpacity>
       </View>
     </KeyboardAwareScrollView>
   );
@@ -225,7 +224,8 @@ const styles = StyleSheet.create({
   headerDecoration: { width: 200, height: 228, opacity: 0.55 },
   topRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "stretch", marginBottom: spacing.md },
   backButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  headerTitle: { color: "#fff", fontSize: 20, fontWeight: "800" },
+  headerTitle: { color: "#fff", fontSize: 20, fontWeight: "800", flex: 1 },
+  headerSaveButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   photoPicker: {
     width: 96,
     height: 96,
@@ -283,16 +283,4 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontSize: 13 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },
   error: { color: colors.danger, marginTop: spacing.md },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    padding: spacing.md,
-    alignItems: "center",
-    marginTop: spacing.lg,
-    minHeight: 48,
-    justifyContent: "center",
-  },
-  buttonContent: { flexDirection: "row", alignItems: "center", gap: 8 },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });

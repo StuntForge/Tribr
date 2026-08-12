@@ -342,7 +342,7 @@ export default function HomeScreen({ navigation }: any) {
           <StatHalf
             icon="refresh"
             value={profile.completedCycles}
-            label="Cycles done"
+            label="Tribes joined"
             onPress={() => navigation.navigate("Groups", { screen: "GroupHistory" })}
           />
         </View>

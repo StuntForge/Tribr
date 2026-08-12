@@ -191,7 +191,7 @@ function NotificationRow({ item, onPress, onDismiss }: { item: NotificationItem;
   );
 
   return (
-    <Animated.View exiting={SlideOutRight.duration(220)} layout={LinearTransition.springify().damping(18)}>
+    <Animated.View exiting={SlideOutRight.duration(180)} layout={LinearTransition.duration(160)}>
       <Swipeable renderRightActions={renderRightActions} onSwipeableOpen={onDismiss} overshootRight={false} rightThreshold={56}>
         <TouchableOpacity style={[styles.card, !item.read && styles.cardUnread]} onPress={onPress}>
           {item.groupName && <Text style={styles.groupLabel}>{item.groupName}</Text>}
