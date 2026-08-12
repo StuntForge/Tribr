@@ -11,6 +11,8 @@ import ApplicationsScreen from "../screens/groups/ApplicationsScreen";
 import GroupChatScreen from "../screens/groups/GroupChatScreen";
 import TaskScheduleScreen from "../screens/groups/TaskScheduleScreen";
 import CompleteTaskScreen from "../screens/groups/CompleteTaskScreen";
+import SocialScheduleScreen from "../screens/groups/SocialScheduleScreen";
+import SocialAttendanceScreen from "../screens/groups/SocialAttendanceScreen";
 import RateHostScreen from "../screens/groups/RateHostScreen";
 import SearchMembersScreen from "../screens/groups/SearchMembersScreen";
 import PublicProfileScreen from "../screens/groups/PublicProfileScreen";
@@ -44,6 +46,8 @@ export default function GroupsStack() {
       <Stack.Screen name="GroupChat" component={GroupChatScreen} options={{ title: "Tribe Chat" }} />
       <Stack.Screen name="TaskSchedule" component={TaskScheduleScreen} options={{ title: "Schedule" }} />
       <Stack.Screen name="CompleteTask" component={CompleteTaskScreen} options={{ title: "Complete Task" }} />
+      <Stack.Screen name="SocialSchedule" component={SocialScheduleScreen} options={{ title: "Schedule" }} />
+      <Stack.Screen name="SocialAttendance" component={SocialAttendanceScreen} options={{ title: "Attendance" }} />
       <Stack.Screen name="RateHost" component={RateHostScreen} options={{ title: "Rate the Host" }} />
       <Stack.Screen name="SearchMembers" component={SearchMembersScreen} options={{ title: "Find Members" }} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ title: "Profile" }} />

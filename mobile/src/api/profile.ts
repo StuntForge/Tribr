@@ -1,5 +1,16 @@
 import { apiFetch } from "./client";
 
+// 11.13 - a plain attendance percentage for Social Tribes, computed only
+// from ATTENDED/NO_SHOW outcomes (VALID_REASON excluded from both sides).
+// Deliberately not a star rating - always shown separately, never blended
+// with overallRating.
+export interface SocialReliability {
+  attended: number;
+  noShows: number;
+  validReasons: number;
+  percentage: number | null;
+}
+
 export interface Profile {
   id: string;
   phone: string;
@@ -20,6 +31,7 @@ export interface Profile {
   overallRating: number | null;
   workerRating: number | null;
   hostRating: number | null;
+  socialReliability: SocialReliability;
   completedCycles: number;
   completedTasksCount: number;
   lookingForGroup: boolean;
@@ -85,6 +97,7 @@ export interface PublicProfile {
   overallRating: number | null;
   workerRating: number | null;
   hostRating: number | null;
+  socialReliability: SocialReliability;
   completedCycles: number;
   completedTasksCount: number;
 }

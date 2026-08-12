@@ -35,8 +35,9 @@ export interface Task {
   updatedAt: string;
 }
 
-export function getJobCategories() {
-  return apiFetch<JobCategory[]>("/api/job-categories");
+// Defaults to Work categories server-side when kind is omitted.
+export function getJobCategories(kind?: "WORK" | "SOCIAL") {
+  return apiFetch<JobCategory[]>(`/api/job-categories${kind ? `?kind=${kind}` : ""}`);
 }
 
 export function getMyTasks() {

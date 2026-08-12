@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { computeRatingBreakdown, computeRatingSummary } from "../services/ratings";
+import { computeSocialReliability } from "../services/socialReliability";
 import { haversineMiles } from "../services/geo";
 import { geocodeLabel } from "../services/geocode";
 
@@ -23,7 +24,8 @@ const DIETARY_OPTIONS = [
 function serializePrivateProfile(
   user: any,
   ratings: Awaited<ReturnType<typeof computeRatingSummary>>,
-  completedTasksCount: number
+  completedTasksCount: number,
+  socialReliability: Awaited<ReturnType<typeof computeSocialReliability>>
 ) {
   return {
     id: user.id,
@@ -48,6 +50,9 @@ function serializePrivateProfile(
     hostRating: ratings.hostRating,
     completedCycles: ratings.completedCycles,
     completedTasksCount,
+    // Social Reliability (11.13) - always shown separately from the star
+    // rating above, never blended into it.
+    socialReliability,
   };
 }
 
@@ -75,7 +80,12 @@ router.get("/me", async (req, res) => {
   });
   if (!user) return res.status(404).json({ error: "Account not found." });
   res.json(
-    serializePrivateProfile(user, await computeRatingSummary(user.id), await countCompletedTasks(user.id))
+    serializePrivateProfile(
+      user,
+      await computeRatingSummary(user.id),
+      await countCompletedTasks(user.id),
+      await computeSocialReliability(user.id)
+    )
   );
 });
 
@@ -151,7 +161,12 @@ router.put("/me", async (req, res) => {
   });
 
   res.json(
-    serializePrivateProfile(updated, await computeRatingSummary(updated.id), await countCompletedTasks(updated.id))
+    serializePrivateProfile(
+      updated,
+      await computeRatingSummary(updated.id),
+      await countCompletedTasks(updated.id),
+      await computeSocialReliability(updated.id)
+    )
   );
 });
 
@@ -248,6 +263,7 @@ router.get("/users/:id", async (req, res) => {
   }
 
   const ratings = await computeRatingSummary(target.id);
+  const socialReliability = await computeSocialReliability(target.id);
 
   res.json({
     id: target.id,
@@ -264,6 +280,9 @@ router.get("/users/:id", async (req, res) => {
     hostRating: ratings.hostRating,
     completedCycles: ratings.completedCycles,
     completedTasksCount: await countCompletedTasks(target.id),
+    // Social Reliability (11.13) - always shown separately from the star
+    // rating above, never blended into it.
+    socialReliability,
   });
 });
 

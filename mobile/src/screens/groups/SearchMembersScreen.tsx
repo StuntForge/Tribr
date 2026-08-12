@@ -54,7 +54,7 @@ export default function SearchMembersScreen({ route, navigation }: any) {
     setHasPhoto(false);
   };
 
-  const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories });
+  const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: () => getJobCategories() });
   const { data: results, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["member-search", query, categoryId, jobLength, ageMin, ageMax, gender, maxDistanceMiles, minRating, favouritesOnly, hasPhoto],
     queryFn: () =>

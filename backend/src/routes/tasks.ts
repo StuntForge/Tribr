@@ -89,9 +89,13 @@ function isLocked(task: { status: string }) {
   return ["SUBMITTED", "APPROVED", "ACTIVE"].includes(task.status);
 }
 
-router.get("/job-categories", async (_req, res) => {
+// 11.x - defaults to WORK categories for backward compatibility with the
+// existing (pre-Social-Tribes) Work Tribe task/category pickers, which call
+// this unfiltered.
+router.get("/job-categories", async (req, res) => {
+  const kind = req.query.kind === "SOCIAL" ? "SOCIAL" : "WORK";
   const categories = await prisma.jobCategory.findMany({
-    where: { active: true },
+    where: { active: true, kind },
     orderBy: { name: "asc" },
   });
   res.json(categories);

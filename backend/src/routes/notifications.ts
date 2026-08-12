@@ -36,6 +36,8 @@ const ACTION_ITEM_TYPES = [
   "KICK_VOTE_STARTED",
   "TASK_ACTIVE",
   "APPLICATION_TASK_REQUESTED",
+  "SOCIAL_SCHEDULING_OPENED",
+  "SOCIAL_AVAILABILITY_NEEDED",
 ];
 
 // 5.11 - reminders. There's no background scheduler yet, so instead of a
@@ -140,7 +142,7 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
   });
 
   for (const m of memberships) {
-    if (m.group.state === "WORKING") {
+    if (m.group.state === "WORKING" && m.group.tribeType === "WORK") {
       const cycle = await getCurrentCycle(m.groupId, m.group.currentCycleNumber);
       const order = cycle ? parseOrder(cycle) : [];
       if (order.length > 0) {
@@ -202,6 +204,71 @@ export async function computeActionItems(userId: string): Promise<ActionItem[]> 
               });
             }
           }
+        }
+      }
+    }
+
+    if (m.group.state === "WORKING" && m.group.tribeType === "SOCIAL") {
+      const socialEvent = await prisma.socialEvent.findUnique({ where: { groupId: m.groupId } });
+
+      if (!socialEvent && m.group.dateType === "SCHEDULE_TOGETHER") {
+        const proposal = await prisma.socialEventProposal.findUnique({
+          where: { groupId: m.groupId },
+          include: { submissions: true },
+        });
+
+        if (m.group.leaderId === userId) {
+          if (!proposal) {
+            items.push({
+              id: `social-propose:${m.groupId}`,
+              type: "SOCIAL_PROPOSE_DATES",
+              title: "Propose dates",
+              body: `Propose dates for ${m.group.name}.`,
+              createdAt: m.group.socialScheduleWindowStart ?? m.group.updatedAt,
+              groupId: m.groupId,
+            });
+          } else {
+            const requiredIds = (await prisma.groupMember.findMany({ where: { groupId: m.groupId, status: "ACTIVE" } }))
+              .map((x) => x.userId)
+              .filter((id) => id !== userId);
+            const allSubmitted = requiredIds.every((id) => proposal.submissions.some((s) => s.userId === id));
+            if (allSubmitted) {
+              items.push({
+                id: `social-pick:${m.groupId}`,
+                type: "SOCIAL_PICK_DATE",
+                title: "Pick a date",
+                body: `Everyone's responded for ${m.group.name} - pick a date or revise.`,
+                createdAt: proposal.createdAt,
+                groupId: m.groupId,
+              });
+            }
+          }
+        } else if (proposal) {
+          const submitted = proposal.submissions.some((s) => s.userId === userId);
+          if (!submitted) {
+            items.push({
+              id: `social-submit:${m.groupId}`,
+              type: "SOCIAL_SUBMIT_AVAILABILITY",
+              title: "Submit your availability",
+              body: `Let ${m.group.name} know when you're free.`,
+              createdAt: proposal.createdAt,
+              groupId: m.groupId,
+            });
+          }
+        }
+      }
+
+      if (socialEvent && m.group.leaderId === userId && socialEvent.confirmedDate <= new Date()) {
+        const attendanceRecorded = await prisma.socialAttendance.findFirst({ where: { groupId: m.groupId } });
+        if (!attendanceRecorded) {
+          items.push({
+            id: `social-attendance:${m.groupId}`,
+            type: "SOCIAL_ATTENDANCE_PENDING",
+            title: "Record attendance",
+            body: `Record who attended ${m.group.name}.`,
+            createdAt: socialEvent.confirmedDate,
+            groupId: m.groupId,
+          });
         }
       }
     }

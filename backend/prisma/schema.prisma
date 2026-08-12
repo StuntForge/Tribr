@@ -76,6 +76,9 @@ model User {
   kickBallots        KickBallot[]
   availabilityResponses AvailabilityResponse[]
   proposalSubmissions   ProposalSubmission[]
+  socialProposalSubmissions   SocialProposalSubmission[]
+  socialAvailabilityResponses SocialAvailabilityResponse[]
+  socialAttendances           SocialAttendance[]
 }
 
 model UserPhoto {
@@ -114,8 +117,13 @@ model JobCategory {
   id        String  @id @default(cuid())
   name      String  @unique
   active    Boolean @default(true)
+  // 11.x - distinguishes Work Tribe task categories (the original list)
+  // from Social Tribe activity categories (Hangout, Food & Drink, etc.) -
+  // same table, filtered by kind rather than a second category system.
+  kind      String  @default("WORK") // WORK | SOCIAL
   tasks     Task[]
   allowedInGroups GroupAllowedCategory[]
+  socialGroups    Group[] @relation("SocialCategory")
 }
 
 // ---------- Personal Task System (Chapter 3) ----------
@@ -197,6 +205,23 @@ model Group {
 
   currentCycleNumber Int     @default(1)
 
+  // ---------- Social Tribes (11.x) ----------
+  // tribeType discriminates Work Tribes (the task-per-member system above,
+  // unchanged) from Social Tribes (one shared activity for the whole group,
+  // no per-member task). Every field below is null/default for Work Tribes.
+  tribeType         String   @default("WORK") // WORK | SOCIAL
+  socialCategoryId  String?
+  socialCategory    JobCategory? @relation("SocialCategory", fields: [socialCategoryId], references: [id])
+  dateType          String?  // FIXED | SCHEDULE_TOGETHER (Social only)
+  fixedDate         DateTime?
+  fixedAllDay       Boolean?
+  fixedStartTime    String?
+  fixedEndTime      String?
+  // Anchors the 2-week "Schedule Together" proposal window - the same role
+  // task.activatedAt plays for Work Tribe scheduling. Stamped when the
+  // Tribe starts.
+  socialScheduleWindowStart DateTime?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -210,6 +235,9 @@ model Group {
   dissolutionVotes  DissolutionVote[]
   kickVotes         KickVote[]
   allowedCategories GroupAllowedCategory[]
+  socialEventProposal SocialEventProposal?
+  socialEvent         SocialEvent?
+  socialAttendances   SocialAttendance[]
 
   @@index([state])
 }
@@ -298,12 +326,15 @@ model GroupApplication {
   group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   applicantId String
   applicant   User     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
-  taskId      String
-  task        Task     @relation(fields: [taskId], references: [id])
+  // Required for Work Tribe applications (every applicant brings a task);
+  // null for Social Tribe applications, which just ask to join the shared
+  // activity with no task involved (11.x).
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id])
   message     String?
 
   status      String   @default("PENDING")
-  // PENDING | APPROVED | REJECTED | TASK_SUGGESTED | TASK_REQUESTED
+  // PENDING | APPROVED | REJECTED | TASK_SUGGESTED | TASK_REQUESTED | WITHDRAWN
   rejectionReason String?
   suggestedTaskId String?
 
@@ -394,6 +425,91 @@ model WorkDay {
   foodProvided    Boolean  @default(false)
   addressRevealed Boolean  @default(true)
   createdAt       DateTime @default(now())
+}
+
+// ---------- Social Tribes Scheduling & Attendance (11.x) ----------
+// A parallel, group-id-keyed mirror of the Work Tribe scheduling models
+// above (AvailabilityProposal -> WorkDay), used only for "Schedule
+// Together" Social Tribes, where there's one shared activity for the whole
+// group rather than a per-member task. Kept separate from the Work models
+// rather than adding a nullable groupId to them, since Work's scheduling
+// tables assume a single task owner/host and an active-task queue that a
+// Social Tribe doesn't have.
+
+model SocialEventProposal {
+  id           String   @id @default(cuid())
+  groupId      String   @unique
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  revisionUsed Boolean  @default(false)
+
+  options     SocialDateOption[]
+  submissions SocialProposalSubmission[]
+}
+
+model SocialProposalSubmission {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    SocialEventProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submittedAt DateTime @default(now())
+
+  @@unique([proposalId, userId])
+}
+
+model SocialDateOption {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    SocialEventProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  date        DateTime
+  allDay      Boolean  @default(true)
+  startTime   String?
+  endTime     String?
+
+  responses   SocialAvailabilityResponse[]
+}
+
+model SocialAvailabilityResponse {
+  id           String   @id @default(cuid())
+  dateOptionId String
+  dateOption   SocialDateOption @relation(fields: [dateOptionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  available    Boolean
+
+  @@unique([dateOptionId, userId])
+}
+
+// The confirmed date for a Social Tribe's shared activity - the Social
+// equivalent of WorkDay, but 1:1 with the Group instead of a Task. Created
+// immediately (no scheduling round) for a Fixed Date Tribe, or via
+// SocialEventProposal confirmation for a Schedule Together Tribe.
+model SocialEvent {
+  id            String   @id @default(cuid())
+  groupId       String   @unique
+  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  confirmedDate DateTime
+  allDay        Boolean  @default(true)
+  startTime     String?
+  endTime       String?
+  createdAt     DateTime @default(now())
+}
+
+// Recorded once per committed member after a Social Tribe's event date has
+// passed. Deliberately not RatingEvent - Social attendance has no star
+// score (never blended with the Work star rating), just a plain outcome
+// feeding Social Reliability.
+model SocialAttendance {
+  id         String   @id @default(cuid())
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outcome    String   // ATTENDED | NO_SHOW | VALID_REASON
+  recordedAt DateTime @default(now())
+
+  @@unique([groupId, userId])
 }
 
 // ---------- Group Chat ----------

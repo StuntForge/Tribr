@@ -17,6 +17,7 @@
     "seed:rob-invites": "tsx scripts/seedRobInvitations.ts",
     "seed:rob-history": "tsx scripts/seedRobHistory.ts",
     "migrate:categories": "tsx scripts/migrateCategories.ts",
+    "seed:social-categories": "tsx scripts/seedSocialCategories.ts",
     "stripe:setup": "tsx scripts/stripeSetup.ts"
   },
   "dependencies": {

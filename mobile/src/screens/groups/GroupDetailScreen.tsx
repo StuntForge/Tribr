@@ -26,7 +26,18 @@ import Avatar from "../../components/Avatar";
 import ProBadge from "../../components/ProBadge";
 import { useToast } from "../../components/Toast";
 import { categoryThumbnail } from "../../constants/categoryThumbnails";
+import { socialCategoryIcon } from "../../constants/socialCategoryIcons";
 import { colors, radii, shadows, spacing, type } from "../../theme";
+
+function formatSocialEventDate(date: string, allDay: boolean, startTime: string | null): string {
+  const d = new Date(date);
+  const dateLabel = d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  if (allDay || !startTime) return dateLabel;
+  const [h, m] = startTime.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${dateLabel}, ${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
 
 const STATE_LABEL: Record<string, string> = {
   RECRUITING: "RECRUITING",
@@ -81,7 +92,7 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   }
 
   const applyMutation = useMutation({
-    mutationFn: (taskId: string) => applyToGroup(groupId, taskId, message.trim() || undefined),
+    mutationFn: (taskId: string | undefined) => applyToGroup(groupId, taskId, message.trim() || undefined),
     onSuccess: () => {
       invalidate();
       toast.show("Application submitted");
@@ -203,7 +214,11 @@ export default function GroupDetailScreen({ route, navigation }: any) {
     >
       <View style={styles.heroCard}>
         <View style={styles.heroTopRow}>
-          {group.leaderTaskPhotoUrl ? (
+          {group.tribeType === "SOCIAL" ? (
+            <View style={[styles.heroPhoto, styles.heroPhotoFallback]}>
+              <Ionicons name={socialCategoryIcon(group.socialCategory)} size={28} color={colors.primary} />
+            </View>
+          ) : group.leaderTaskPhotoUrl ? (
             <Image source={{ uri: group.leaderTaskPhotoUrl }} style={styles.heroPhoto} />
           ) : categoryThumbnail(group.leaderTaskCategory) ? (
             <View style={[styles.heroPhoto, styles.heroPhotoFallback]}>
@@ -219,11 +234,26 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               <Text style={styles.heroTitle}>{group.name}</Text>
               <StatePill state={group.state} />
             </View>
-            <Text style={styles.heroMeta}>
-              {group.categories.length > 0 ? group.categories.map((c) => c.name).join(", ") : "Any category"} ·{" "}
-              {group.memberCount}/{group.sizeMax} members · Cycle {group.currentCycleNumber}
-              {group.averageMemberRating != null ? ` · ★ ${group.averageMemberRating.toFixed(1)}` : ""}
-            </Text>
+            {group.tribeType === "SOCIAL" ? (
+              <Text style={styles.heroMeta}>
+                {group.socialCategory ?? "Social"} · {group.memberCount}/{group.sizeMax} members
+              </Text>
+            ) : (
+              <Text style={styles.heroMeta}>
+                {group.categories.length > 0 ? group.categories.map((c) => c.name).join(", ") : "Any category"} ·{" "}
+                {group.memberCount}/{group.sizeMax} members · Cycle {group.currentCycleNumber}
+                {group.averageMemberRating != null ? ` · ★ ${group.averageMemberRating.toFixed(1)}` : ""}
+              </Text>
+            )}
+            {group.tribeType === "SOCIAL" && (
+              <Text style={styles.requirementMeta}>
+                {group.socialEvent
+                  ? formatSocialEventDate(group.socialEvent.confirmedDate, group.socialEvent.allDay, group.socialEvent.startTime)
+                  : group.dateType === "FIXED" && group.fixedDate
+                  ? formatSocialEventDate(group.fixedDate, group.fixedAllDay ?? true, group.fixedStartTime)
+                  : "Date: To be arranged"}
+              </Text>
+            )}
             {(group.verifiedOnly || group.minRating != null || group.preferredGender || group.preferredAgeMin != null || group.preferredAgeMax != null) && (
               <Text style={styles.requirementMeta}>
                 Requires:{" "}
@@ -243,6 +273,38 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         </View>
         <Text style={styles.heroDescription}>{group.description}</Text>
       </View>
+
+      {group.tribeType === "SOCIAL" && (group.isMember || group.isLeader) && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Event details</Text>
+          {group.locationLabel && (
+            <View style={styles.eventDetailRow}>
+              <Ionicons name="location" size={16} color={colors.primary} />
+              <Text style={styles.eventDetailText}>{group.locationLabel}</Text>
+            </View>
+          )}
+          {group.state === "WORKING" && group.dateType === "SCHEDULE_TOGETHER" && !group.socialEvent && (
+            <TouchableOpacity
+              style={styles.primaryButtonFull}
+              onPress={() => navigation.navigate("SocialSchedule", { groupId, groupName: group.name })}
+            >
+              <Ionicons name="calendar" size={16} color="#fff" />
+              <Text style={styles.primaryButtonFullText}>
+                {group.isLeader ? "Manage scheduling" : "Submit your availability"}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {group.isLeader && group.state === "WORKING" && group.socialEvent && new Date(group.socialEvent.confirmedDate) <= new Date() && (
+            <TouchableOpacity
+              style={styles.primaryButtonFull}
+              onPress={() => navigation.navigate("SocialAttendance", { groupId, groupName: group.name })}
+            >
+              <Ionicons name="checkmark-done" size={16} color="#fff" />
+              <Text style={styles.primaryButtonFullText}>Record attendance</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {(group.isMember || group.isLeader) && (
         <ActionRow
@@ -335,9 +397,11 @@ export default function GroupDetailScreen({ route, navigation }: any) {
                     )}
                     {m.isPro && <ProBadge size="tiny" />}
                   </View>
-                  <Text style={styles.memberSubtitle} numberOfLines={1}>
-                    {m.currentTask ? m.currentTask.name : "No task this cycle"}
-                  </Text>
+                  {group.tribeType === "WORK" && (
+                    <Text style={styles.memberSubtitle} numberOfLines={1}>
+                      {m.currentTask ? m.currentTask.name : "No task this cycle"}
+                    </Text>
+                  )}
                 </View>
                 {!isSelf && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
               </TouchableOpacity>
@@ -488,7 +552,27 @@ export default function GroupDetailScreen({ route, navigation }: any) {
         </View>
       )}
 
-      {canApply && (
+      {canApply && group.tribeType === "SOCIAL" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Apply to join</Text>
+          <Text style={styles.hint}>Ask to join this Tribe's activity - no task needed.</Text>
+          <TextInput
+            style={styles.input}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Optional message to the Tribe leader"
+          />
+          <TouchableOpacity
+            style={[styles.primaryButtonFull, busy && styles.buttonDisabled]}
+            onPress={() => applyMutation.mutate(undefined)}
+            disabled={busy}
+          >
+            {applyMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonFullText}>Apply</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {canApply && group.tribeType === "WORK" && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Apply to join</Text>
           {availableTasks.length === 0 ? (
@@ -572,7 +656,11 @@ export default function GroupDetailScreen({ route, navigation }: any) {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Actions</Text>
         {group.isLeader && group.state !== "READY" && ["RECRUITING", "READY"].includes(group.state) && (
-          <Text style={styles.hint}>Start Work unlocks once at least {group.sizeMin} members have an approved task.</Text>
+          <Text style={styles.hint}>
+            {group.tribeType === "SOCIAL"
+              ? `Start Tribe unlocks once you have at least ${group.sizeMin} members.`
+              : `Start Work unlocks once at least ${group.sizeMin} members have an approved task.`}
+          </Text>
         )}
         <View style={styles.actionColumn}>
           {myActionItems
@@ -717,6 +805,8 @@ const styles = StyleSheet.create({
   heroMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   requirementMeta: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: 2 },
   heroDescription: { fontSize: 14, color: colors.text, marginTop: spacing.sm, lineHeight: 20 },
+  eventDetailRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: spacing.sm },
+  eventDetailText: { fontSize: 13, color: colors.text },
 
   statePill: {
     flexDirection: "row",

@@ -2,11 +2,22 @@ import { apiFetch } from "./client";
 
 export type GroupState = "RECRUITING" | "READY" | "WORKING" | "COMPLETED" | "DISSOLUTION" | "DISBANDED";
 
+export type TribeType = "WORK" | "SOCIAL";
+export type DateType = "FIXED" | "SCHEDULE_TOGETHER";
+
 export interface GroupSummary {
   id: string;
   name: string;
   description: string;
+  tribeType: TribeType;
   categories: string[];
+  // Social Tribes only - null for Work.
+  socialCategory: string | null;
+  dateType: DateType | null;
+  fixedDate: string | null;
+  fixedAllDay: boolean | null;
+  fixedStartTime: string | null;
+  fixedEndTime: string | null;
   locationLabel: string | null;
   locationLat: number | null;
   locationLng: number | null;
@@ -67,7 +78,16 @@ export interface GroupDetail {
   id: string;
   name: string;
   description: string;
+  tribeType: TribeType;
   categories: { id: string; name: string }[];
+  // Social Tribes only - null for Work.
+  socialCategory: string | null;
+  dateType: DateType | null;
+  fixedDate: string | null;
+  fixedAllDay: boolean | null;
+  fixedStartTime: string | null;
+  fixedEndTime: string | null;
+  socialEvent: { confirmedDate: string; allDay: boolean; startTime: string | null; endTime: string | null } | null;
   verifiedOnly: boolean;
   minRating: number | null;
   locationLabel: string | null;
@@ -98,7 +118,8 @@ export interface GroupDetail {
 export interface PendingApplication {
   id: string;
   applicant: { id: string; firstName: string | null; photoUrl: string | null; isPro: boolean };
-  task: { id: string; name: string; category: string; jobLength: string | null };
+  // null for a Social Tribe application - there's no task involved.
+  task: { id: string; name: string; category: string; jobLength: string | null } | null;
   message: string | null;
   createdAt: string;
 }
@@ -129,6 +150,7 @@ export interface BrowseGroupsFilters {
   sizeMax?: number;
   maxDistanceMiles?: number;
   jobLength?: string;
+  tribeType?: TribeType;
 }
 
 export function browseGroups(filters: BrowseGroupsFilters = {}) {
@@ -139,6 +161,7 @@ export function browseGroups(filters: BrowseGroupsFilters = {}) {
   if (filters.sizeMax != null) params.set("sizeMax", String(filters.sizeMax));
   if (filters.maxDistanceMiles != null) params.set("maxDistanceMiles", String(filters.maxDistanceMiles));
   if (filters.jobLength) params.set("jobLength", filters.jobLength);
+  if (filters.tribeType) params.set("tribeType", filters.tribeType);
   const qs = params.toString();
   return apiFetch<GroupSummary[]>(`/api/groups/browse${qs ? `?${qs}` : ""}`);
 }
@@ -176,13 +199,11 @@ export function getAllGroupMembers(id: string) {
   return apiFetch<AllMembersEntry[]>(`/api/groups/${id}/all-members`);
 }
 
-export interface CreateGroupInput {
+interface CreateGroupBaseInput {
   name: string;
   description: string;
-  categoryIds: string[];
   sizeMin: number;
   sizeMax: number;
-  taskId: string;
   verifiedOnly?: boolean;
   minRating?: number;
   preferredAgeMin?: number;
@@ -191,11 +212,39 @@ export interface CreateGroupInput {
   durationBand?: string;
 }
 
+export interface CreateWorkGroupInput extends CreateGroupBaseInput {
+  tribeType: "WORK";
+  categoryIds: string[];
+  taskId: string;
+  locationLabel?: string;
+  locationLat?: number;
+  locationLng?: number;
+}
+
+// 11.x - Social Tribes: one shared activity for the whole group. Location
+// is required (unlike Work); category is a single pick rather than a
+// multi-select "allowed categories" set.
+export interface CreateSocialGroupInput extends CreateGroupBaseInput {
+  tribeType: "SOCIAL";
+  socialCategoryId: string;
+  locationLabel: string;
+  locationLat: number;
+  locationLng: number;
+  dateType: "FIXED" | "SCHEDULE_TOGETHER";
+  fixedDate?: string;
+  fixedAllDay?: boolean;
+  fixedStartTime?: string;
+  fixedEndTime?: string;
+}
+
+export type CreateGroupInput = CreateWorkGroupInput | CreateSocialGroupInput;
+
 export function createGroup(input: CreateGroupInput) {
   return apiFetch<GroupDetail>("/api/groups", { method: "POST", body: input });
 }
 
-export function applyToGroup(groupId: string, taskId: string, message?: string) {
+// taskId is omitted for a Social Tribe application - there's no task involved.
+export function applyToGroup(groupId: string, taskId: string | undefined, message?: string) {
   return apiFetch<{ id: string; status: string }>(`/api/groups/${groupId}/apply`, {
     method: "POST",
     body: { taskId, message },
@@ -339,7 +388,7 @@ export function getPreviousMembers(groupId: string) {
   return apiFetch<PreviousMember[]>(`/api/groups/${groupId}/previous-members`);
 }
 
-export function inviteMember(groupId: string, invitedUserId: string, suggestedTaskId: string) {
+export function inviteMember(groupId: string, invitedUserId: string, suggestedTaskId?: string) {
   return apiFetch<{ id: string }>(`/api/groups/${groupId}/invitations`, {
     method: "POST",
     body: { invitedUserId, suggestedTaskId },
@@ -375,7 +424,8 @@ export interface MyApplication {
   id: string;
   groupId: string;
   groupName: string;
-  task: { id: string; name: string; category: string; jobLength: string | null };
+  // null for a Social Tribe application - there's no task involved.
+  task: { id: string; name: string; category: string; jobLength: string | null } | null;
   status: "PENDING" | "TASK_REQUESTED" | "TASK_SUGGESTED";
   rejectionReason: string | null;
   createdAt: string;

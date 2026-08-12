@@ -52,6 +52,14 @@ export default function ProfileScreen({ navigation }: any) {
           </Text>
           <Text style={styles.ratingSub}>· {profile.completedCycles} cycles completed</Text>
         </View>
+        {/* Social Reliability (11.13) - always separate from the star rating
+            above, never blended into it. */}
+        <View style={styles.ratingRow}>
+          <Ionicons name="checkmark-circle" size={14} color="#fff" />
+          <Text style={styles.ratingSub}>
+            Social Reliability: {profile.socialReliability.percentage != null ? `${profile.socialReliability.percentage}%` : "New"}
+          </Text>
+        </View>
       </WaveHeader>
 
       <Reveal delay={nextDelay()}>

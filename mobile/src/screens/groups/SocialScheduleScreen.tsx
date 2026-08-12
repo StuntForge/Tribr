@@ -3,71 +3,67 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, Touchab
 import { Calendar } from "react-native-calendars";
 import { useFocusEffect } from "@react-navigation/native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as ExpoCalendar from "expo-calendar";
 import {
-  confirmWorkDay,
-  DateOptionInfo,
-  getSchedule,
-  ProposeDateOption,
-  proposeDates,
-  reviseDates,
-  ScheduleInfo,
-  submitAvailability,
-} from "../../api/schedule";
+  confirmSocialEvent,
+  getSocialSchedule,
+  ProposeSocialDateOption,
+  proposeSocialDates,
+  reviseSocialDates,
+  SocialDateOptionInfo,
+  SocialScheduleInfo,
+  submitSocialAvailability,
+} from "../../api/socialSchedule";
 import CalendarPicker, { calendarTheme, formatDateLabel, formatTime12h, toDateString } from "../../components/CalendarPicker";
-import { colors, radii, spacing } from "../../theme";
+import { colors, spacing } from "../../theme";
 
-export default function TaskScheduleScreen({ route, navigation }: any) {
-  const { groupId, taskId, taskName } = route.params as { groupId: string; taskId: string; taskName: string };
+// Mirrors TaskScheduleScreen.tsx's propose/respond/submit/confirm flow, but
+// for a Social Tribe's single shared activity (no taskId, no food/dietary/
+// address-reveal concepts - those are Work-Tribe-specific).
+export default function SocialScheduleScreen({ route, navigation }: any) {
+  const { groupId, groupName } = route.params as { groupId: string; groupName: string };
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [revising, setRevising] = useState(false);
 
   const { data: schedule, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["schedule", groupId, taskId],
-    queryFn: () => getSchedule(groupId, taskId),
+    queryKey: ["social-schedule", groupId],
+    queryFn: () => getSocialSchedule(groupId),
   });
 
-  // Tapping a notification (e.g. "everyone's responded, pick a date") reuses
-  // an already-mounted instance of this screen if one's still sitting in the
-  // stack from an earlier visit, rather than mounting a fresh one - so a
-  // mount-only fetch can leave it showing whatever was cached from before
-  // the thing the notification is about actually happened. Refetching on
-  // every focus (not just first mount) closes that gap.
   useFocusEffect(
     React.useCallback(() => {
       refetch();
     }, [refetch])
   );
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["schedule", groupId, taskId] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["social-schedule", groupId] });
+    queryClient.invalidateQueries({ queryKey: ["group", groupId] });
+  };
 
-  // Only the dates marked available get posted - anything left off is
-  // treated as unavailable automatically once submitted (see the submit
-  // endpoint). That means tapping a date is a purely local, instant toggle
-  // with zero network calls, and Submit sends the whole set in one request
-  // instead of one call per date.
   const submitMutation = useMutation({
-    mutationFn: (availableDateOptionIds: string[]) => submitAvailability(groupId, taskId, availableDateOptionIds),
+    mutationFn: (availableDateOptionIds: string[]) => submitSocialAvailability(groupId, availableDateOptionIds),
     onSuccess: invalidate,
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
   const confirmMutation = useMutation({
-    mutationFn: ({ dateOptionId, foodProvided }: { dateOptionId: string; foodProvided: boolean }) =>
-      confirmWorkDay(groupId, taskId, dateOptionId, foodProvided),
-    onSuccess: invalidate,
+    mutationFn: (dateOptionId: string) => confirmSocialEvent(groupId, dateOptionId),
+    onSuccess: () => {
+      invalidate();
+      navigation.navigate("GroupDetail", { groupId });
+    },
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
   const proposeMutation = useMutation({
-    mutationFn: (options: ProposeDateOption[]) => proposeDates(groupId, taskId, options),
+    mutationFn: (options: ProposeSocialDateOption[]) => proposeSocialDates(groupId, options),
     onSuccess: invalidate,
     onError: (e: any) => setError(e.message ?? "Something went wrong."),
   });
 
   const reviseMutation = useMutation({
-    mutationFn: (options: ProposeDateOption[]) => reviseDates(groupId, taskId, options),
+    mutationFn: (options: ProposeSocialDateOption[]) => reviseSocialDates(groupId, options),
     onSuccess: () => {
       setRevising(false);
       invalidate();
@@ -86,7 +82,7 @@ export default function TaskScheduleScreen({ route, navigation }: any) {
   const confirmRevise = () => {
     Alert.alert(
       "Add more dates?",
-      "This is your one-time revision for this task - once you send it back to the Tribe, you won't be able to add more dates again.",
+      "This is your one-time revision for this Tribe - once you send it back, you won't be able to add more dates again.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Add dates", onPress: () => setRevising(true) },
@@ -96,11 +92,11 @@ export default function TaskScheduleScreen({ route, navigation }: any) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{taskName}</Text>
+      <Text style={styles.title}>{groupName}</Text>
 
-      {schedule.workDay ? (
-        <ConfirmedView workDay={schedule.workDay} taskName={taskName} groupId={groupId} navigation={navigation} />
-      ) : schedule.isOwner ? (
+      {schedule.socialEvent ? (
+        <ConfirmedView socialEvent={schedule.socialEvent} groupName={groupName} groupId={groupId} navigation={navigation} />
+      ) : schedule.isLeader ? (
         revising ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Add more dates</Text>
@@ -119,10 +115,9 @@ export default function TaskScheduleScreen({ route, navigation }: any) {
           </View>
         ) : !schedule.proposal ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Propose work dates</Text>
+            <Text style={styles.sectionTitle}>Propose dates</Text>
             <Text style={styles.hint}>
-              Tap days on the calendar (dates outside your 2-week window are greyed out) and set a start time for
-              each. If nothing's arranged before the window closes, this task is forfeited to the next person.
+              Tap days on the calendar (dates outside your 2-week window are greyed out) and set a start time for each.
             </Text>
             <CalendarPicker
               existingDates={[]}
@@ -134,19 +129,19 @@ export default function TaskScheduleScreen({ route, navigation }: any) {
             />
           </View>
         ) : (
-          <OwnerReviewView
+          <LeaderReviewView
             proposal={schedule.proposal}
-            onConfirm={(id, food) => confirmMutation.mutate({ dateOptionId: id, foodProvided: food })}
+            onConfirm={(id) => confirmMutation.mutate(id)}
             onRevise={confirmRevise}
-            confirmingId={confirmMutation.isPending ? confirmMutation.variables?.dateOptionId ?? null : null}
+            confirmingId={confirmMutation.isPending ? confirmMutation.variables ?? null : null}
           />
         )
       ) : !schedule.proposal ? (
-        <Text style={styles.hint}>Waiting for the task owner to propose some dates.</Text>
+        <Text style={styles.hint}>Waiting for the Tribe leader to propose some dates.</Text>
       ) : schedule.proposal.mySubmitted ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your availability</Text>
-          <Text style={styles.hint}>You've submitted your availability. Waiting on the task owner to confirm a date.</Text>
+          <Text style={styles.hint}>You've submitted your availability. Waiting on the leader to confirm a date.</Text>
           {schedule.proposal.options.map((option) => (
             <View key={option.id} style={styles.submittedRow}>
               <Text style={styles.optionDate}>
@@ -172,87 +167,42 @@ export default function TaskScheduleScreen({ route, navigation }: any) {
 }
 
 function ConfirmedView({
-  workDay,
-  taskName,
+  socialEvent,
+  groupName,
   groupId,
   navigation,
 }: {
-  workDay: NonNullable<ScheduleInfo["workDay"]>;
-  taskName: string;
+  socialEvent: NonNullable<SocialScheduleInfo["socialEvent"]>;
+  groupName: string;
   groupId: string;
   navigation: any;
 }) {
-  const [addingToCalendar, setAddingToCalendar] = useState(false);
-  const dateLabel = workDay.allDay
-    ? new Date(workDay.confirmedDate).toDateString()
-    : `${new Date(workDay.confirmedDate).toDateString()} ${workDay.startTime}`;
-
-  const addToCalendar = async () => {
-    if (addingToCalendar) return;
-    setAddingToCalendar(true);
-    try {
-      const { status } = await ExpoCalendar.requestCalendarPermissionsAsync();
-      if (status !== "granted") {
-        setAddingToCalendar(false);
-        return;
-      }
-      const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
-      const defaultCalendar = calendars.find((c) => c.allowsModifications) ?? calendars[0];
-      if (!defaultCalendar) {
-        setAddingToCalendar(false);
-        return;
-      }
-
-      const start = new Date(workDay!.confirmedDate);
-      const end = workDay!.allDay ? new Date(start.getTime() + 24 * 60 * 60 * 1000) : new Date(start.getTime() + 2 * 60 * 60 * 1000);
-
-      await ExpoCalendar.createEventAsync(defaultCalendar.id, {
-        title: taskName,
-        startDate: start,
-        endDate: end,
-        allDay: workDay!.allDay,
-        location: workDay!.address ?? undefined,
-      });
-      Alert.alert("Added to calendar", undefined, [{ text: "OK", onPress: () => navigation.navigate("GroupDetail", { groupId }) }]);
-    } catch {
-      setAddingToCalendar(false);
-      Alert.alert("Couldn't add to calendar", "You can add it manually instead.");
-    }
-  };
+  const dateLabel = socialEvent.allDay
+    ? new Date(socialEvent.confirmedDate).toDateString()
+    : `${new Date(socialEvent.confirmedDate).toDateString()} ${socialEvent.startTime}`;
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Work day confirmed</Text>
+      <Text style={styles.sectionTitle}>Date confirmed</Text>
       <Text style={styles.confirmedDate}>{dateLabel}</Text>
-      <Text style={styles.hint}>{workDay!.foodProvided ? "Snacks provided" : "No food provided - bring your own"}</Text>
-      {workDay!.address ? (
-        <Text style={styles.address}>{workDay!.address}</Text>
-      ) : (
-        <Text style={styles.hint}>No exact address was set for this task.</Text>
-      )}
-      <TouchableOpacity style={styles.secondaryButton} onPress={addToCalendar} disabled={addingToCalendar}>
-        {addingToCalendar ? (
-          <ActivityIndicator color={colors.primary} />
-        ) : (
-          <Text style={styles.secondaryButtonText}>Add to calendar</Text>
-        )}
+      <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate("GroupDetail", { groupId })}>
+        <Text style={styles.secondaryButtonText}>Back to {groupName}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-function OwnerReviewView({
+function LeaderReviewView({
   proposal,
   onConfirm,
   onRevise,
   confirmingId,
 }: {
-  proposal: NonNullable<ScheduleInfo["proposal"]>;
-  onConfirm: (id: string, foodProvided: boolean) => void;
+  proposal: NonNullable<SocialScheduleInfo["proposal"]>;
+  onConfirm: (id: string) => void;
   onRevise: () => void;
   confirmingId: string | null;
 }) {
-  const [foodByOption, setFoodByOption] = useState<Record<string, boolean>>({});
   const markedDates: Record<string, any> = {};
   for (const option of proposal.options) {
     markedDates[toDateString(new Date(option.date))] = { marked: true, dotColor: colors.primary, disabled: true, disableTouchEvent: true };
@@ -284,29 +234,17 @@ function OwnerReviewView({
           </Text>
 
           {proposal.allSubmitted && (
-            <View style={styles.ownerBox}>
-              {option.dietary && option.dietary.length > 0 && (
-                <Text style={styles.hint}>Dietary needs of available members: {option.dietary.join(", ")}</Text>
+            <TouchableOpacity
+              style={styles.primaryButtonSmall}
+              onPress={() => onConfirm(option.id)}
+              disabled={confirmingId != null}
+            >
+              {confirmingId === option.id ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Confirm this date</Text>
               )}
-              <View style={styles.foodRow}>
-                <Text style={styles.hint}>Provide snacks?</Text>
-                <Switch
-                  value={Boolean(foodByOption[option.id])}
-                  onValueChange={(v) => setFoodByOption((prev) => ({ ...prev, [option.id]: v }))}
-                />
-              </View>
-              <TouchableOpacity
-                style={styles.primaryButtonSmall}
-                onPress={() => onConfirm(option.id, Boolean(foodByOption[option.id]))}
-                disabled={confirmingId != null}
-              >
-                {confirmingId === option.id ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Confirm this date</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
       ))}
@@ -325,13 +263,10 @@ function MemberRespondView({
   onSubmit,
   busy,
 }: {
-  options: DateOptionInfo[];
+  options: SocialDateOptionInfo[];
   onSubmit: (availableDateOptionIds: string[]) => void;
   busy: boolean;
 }) {
-  // Purely local until Submit - toggling a date is instant with no network
-  // call. Anything left off defaults to "not available" (both here and on
-  // the server once submitted), so there's nothing to force-answer first.
   const [available, setAvailable] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setAvailable((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -392,11 +327,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
   hint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.xs },
   confirmedDate: { fontSize: 16, fontWeight: "600", color: colors.primary, marginTop: spacing.xs },
-  address: { fontSize: 14, color: colors.text, marginTop: spacing.sm, fontWeight: "600" },
   calendar: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: 12,
     marginBottom: spacing.md,
     overflow: "hidden",
   },
@@ -417,8 +351,6 @@ const styles = StyleSheet.create({
   responseTag: { fontSize: 12, fontWeight: "700", color: colors.textMuted, marginTop: spacing.xs },
   responseTagYes: { color: colors.primary },
   responseTagNo: { color: colors.danger },
-  ownerBox: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  foodRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: spacing.sm },
   linkButton: { marginTop: spacing.sm },
   linkButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   error: { color: colors.danger, marginTop: spacing.md },

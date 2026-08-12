@@ -55,16 +55,25 @@ export default function HomeScreen({ navigation }: any) {
     queryFn: getHomeSummary,
   });
   const nextWorkDay = homeSummary?.upcomingWorkDays[0] ?? null;
+  const nextSocialEvent = homeSummary?.upcomingSocialEvents[0] ?? null;
+  // "Up next" shows whichever of a Work task or Social event is soonest -
+  // a Social Tribe has no task, so this can't just be upcomingWorkDays[0].
+  const nextUp: { kind: "WORK"; workDay: NonNullable<typeof nextWorkDay> } | { kind: "SOCIAL"; event: NonNullable<typeof nextSocialEvent> } | null =
+    nextWorkDay && (!nextSocialEvent || new Date(nextWorkDay.confirmedDate) <= new Date(nextSocialEvent.confirmedDate))
+      ? { kind: "WORK", workDay: nextWorkDay }
+      : nextSocialEvent
+      ? { kind: "SOCIAL", event: nextSocialEvent }
+      : null;
 
   const { data: nextTask } = useQuery({
     queryKey: ["tasks", nextWorkDay?.taskId],
     queryFn: () => getTask(nextWorkDay!.taskId),
-    enabled: Boolean(nextWorkDay),
+    enabled: nextUp?.kind === "WORK",
   });
   const { data: attendees } = useQuery({
     queryKey: ["attendees", nextWorkDay?.groupId, nextWorkDay?.taskId],
     queryFn: () => getAttendees(nextWorkDay!.groupId, nextWorkDay!.taskId),
-    enabled: Boolean(nextWorkDay),
+    enabled: nextUp?.kind === "WORK",
   });
 
   const onToggleLooking = async () => {
@@ -89,6 +98,9 @@ export default function HomeScreen({ navigation }: any) {
 
   const workDate = nextWorkDay
     ? new Date(nextWorkDay.confirmedDate).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
+    : null;
+  const socialDate = nextSocialEvent
+    ? new Date(nextSocialEvent.confirmedDate).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
     : null;
 
   return (
@@ -162,6 +174,14 @@ export default function HomeScreen({ navigation }: any) {
                 Host {profile.hostRating != null ? profile.hostRating.toFixed(1) : "—"}
               </Text>
             </View>
+            {/* Social Reliability (11.13) - separate metric, never blended
+                into the star rating to the left. */}
+            <View style={styles.ratingBreakdownItem}>
+              <Ionicons name="checkmark-circle" size={13} color="#fff" />
+              <Text style={styles.ratingHeroBreakdownText}>
+                Social {profile.socialReliability.percentage != null ? `${profile.socialReliability.percentage}%` : "New"}
+              </Text>
+            </View>
           </View>
           <Ionicons name={breakdownOpen ? "chevron-up" : "chevron-forward"} size={18} color="rgba(255,255,255,0.85)" />
         </AnimatedPressable>
@@ -181,6 +201,12 @@ export default function HomeScreen({ navigation }: any) {
                 <Ionicons name="home" size={14} color={colors.primary} />
                 <Text style={styles.ratingBreakdownText}>
                   Host {profile.hostRating != null ? profile.hostRating.toFixed(1) : "—"}
+                </Text>
+              </View>
+              <View style={styles.ratingBreakdownItem}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+                <Text style={styles.ratingBreakdownText}>
+                  Social Reliability {profile.socialReliability.percentage != null ? `${profile.socialReliability.percentage}%` : "New"}
                 </Text>
               </View>
             </View>
@@ -253,19 +279,19 @@ export default function HomeScreen({ navigation }: any) {
         </AnimatedPressable>
       </Reveal>
 
-      {nextWorkDay ? (
+      {nextUp?.kind === "WORK" ? (
         <Reveal delay={nextDelay()}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionHeading}>Up next</Text>
             <AnimatedPressable
-              onPress={() => navigation.navigate("Groups", { screen: "GroupCurrentTasks", params: { groupId: nextWorkDay.groupId, groupName: nextWorkDay.groupName } })}
+              onPress={() => navigation.navigate("Groups", { screen: "GroupCurrentTasks", params: { groupId: nextUp.workDay.groupId, groupName: nextUp.workDay.groupName } })}
             >
               <Text style={styles.seeAllLink}>See all</Text>
             </AnimatedPressable>
           </View>
           <AnimatedPressable
             style={styles.upNextCard}
-            onPress={() => navigation.navigate("Groups", { screen: "TaskDetail", params: { taskId: nextWorkDay.taskId } })}
+            onPress={() => navigation.navigate("Groups", { screen: "TaskDetail", params: { taskId: nextUp.workDay.taskId } })}
           >
             <View style={styles.upNextRow}>
               {nextTask?.photos?.[0] ? (
@@ -281,12 +307,12 @@ export default function HomeScreen({ navigation }: any) {
                     <Ionicons name="calendar" size={13} color={colors.primary} />
                   </View>
                   <Text style={styles.upNextTitle} numberOfLines={1}>
-                    {nextWorkDay.taskName}
+                    {nextUp.workDay.taskName}
                   </Text>
                 </View>
                 <Text style={styles.upNextMeta}>
                   {workDate}
-                  {!nextWorkDay.allDay && nextWorkDay.startTime ? ` · ${nextWorkDay.startTime}` : ""}
+                  {!nextUp.workDay.allDay && nextUp.workDay.startTime ? ` · ${nextUp.workDay.startTime}` : ""}
                 </Text>
                 {attendees && attendees.length > 0 && (
                   <View style={styles.upNextAttendingRow}>
@@ -308,13 +334,44 @@ export default function HomeScreen({ navigation }: any) {
             )}
           </AnimatedPressable>
         </Reveal>
+      ) : nextUp?.kind === "SOCIAL" ? (
+        <Reveal delay={nextDelay()}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeading}>Up next</Text>
+          </View>
+          <AnimatedPressable
+            style={styles.upNextCard}
+            onPress={() => navigation.navigate("Groups", { screen: "GroupDetail", params: { groupId: nextUp.event.groupId } })}
+          >
+            <View style={styles.upNextRow}>
+              <View style={[styles.upNextPhoto, styles.upNextPhotoPlaceholder]}>
+                <Ionicons name="people" size={32} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.upNextTitleRow}>
+                  <View style={styles.upNextCalendarBadge}>
+                    <Ionicons name="calendar" size={13} color={colors.primary} />
+                  </View>
+                  <Text style={styles.upNextTitle} numberOfLines={1}>
+                    {nextUp.event.groupName}
+                  </Text>
+                </View>
+                <Text style={styles.upNextMeta}>
+                  {socialDate}
+                  {!nextUp.event.allDay && nextUp.event.startTime ? ` · ${nextUp.event.startTime}` : ""}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </View>
+          </AnimatedPressable>
+        </Reveal>
       ) : (
         <Reveal delay={nextDelay()}>
           <View style={styles.nextTaskEmptyCard}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.nextTaskEmptyTitle}>Your next task</Text>
+              <Text style={styles.nextTaskEmptyTitle}>Up next</Text>
               <Text style={styles.nextTaskEmptyBody}>
-                You don't have an upcoming task yet. Join a Tribe and start helping each other.
+                You don't have anything upcoming yet. Join a Tribe and start helping each other - or just get together.
               </Text>
               <AnimatedPressable
                 style={styles.browseGroupsButton}

@@ -110,6 +110,19 @@ export default function PublicProfileScreen({ route, navigation }: any) {
         </View>
       </View>
 
+      {/* Social Reliability (11.13) - a separate card, never merged with the
+          star rating above: it's an attendance percentage for Social Tribes,
+          not a personality/popularity score. */}
+      <View style={styles.socialReliabilityCard}>
+        <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.socialReliabilityValue}>
+            {profile.socialReliability.percentage != null ? `${profile.socialReliability.percentage}%` : "New"}
+          </Text>
+          <Text style={styles.socialReliabilityLabel}>Social Reliability</Text>
+        </View>
+      </View>
+
       <View style={styles.statsRow}>
         <View style={styles.statTile}>
           <Ionicons name="checkmark-done" size={18} color={colors.primary} />
@@ -315,6 +328,18 @@ const styles = StyleSheet.create({
   ratingBreakdownRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.sm },
   ratingBreakdownItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   ratingBreakdownText: { ...type.small },
+  socialReliabilityCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  socialReliabilityValue: { fontSize: 16, fontWeight: "700", color: colors.text },
+  socialReliabilityLabel: { fontSize: 12, color: colors.textMuted },
   statsRow: { flexDirection: "row", gap: spacing.sm, marginHorizontal: spacing.lg, marginBottom: spacing.md },
   statTile: {
     flex: 1,

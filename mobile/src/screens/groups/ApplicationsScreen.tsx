@@ -63,7 +63,7 @@ export default function ApplicationsScreen({ route, navigation }: any) {
           pendingDecision={decide.isPending && decide.variables?.appId === item.id ? decide.variables.decision : null}
           onDecide={(decision, reason) => decide.mutate({ appId: item.id, decision, reason })}
           onPressApplicant={() => navigation.navigate("PublicProfile", { userId: item.applicant.id })}
-          onPressTask={() => navigation.navigate("TaskDetail", { taskId: item.task.id })}
+          onPressTask={item.task ? () => navigation.navigate("TaskDetail", { taskId: item.task!.id }) : undefined}
         />
       )}
     />
@@ -83,7 +83,7 @@ function ApplicationCard({
   pendingDecision: Decision | null;
   onDecide: (decision: Decision, reason?: string) => void;
   onPressApplicant: () => void;
-  onPressTask: () => void;
+  onPressTask?: () => void;
 }) {
   const [reason, setReason] = useState("");
 
@@ -95,11 +95,13 @@ function ApplicationCard({
         {application.applicant.isPro && <ProBadge size="tiny" />}
         <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
       </TouchableOpacity>
-      <TouchableOpacity onPress={onPressTask}>
-        <Text style={styles.taskLine}>
-          {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
-        </Text>
-      </TouchableOpacity>
+      {application.task && (
+        <TouchableOpacity onPress={onPressTask}>
+          <Text style={styles.taskLine}>
+            {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
+          </Text>
+        </TouchableOpacity>
+      )}
       {application.message && <Text style={styles.message}>"{application.message}"</Text>}
 
       <TouchableOpacity style={[styles.approveButton, busy && styles.buttonDisabled]} onPress={() => onDecide("APPROVE")} disabled={busy}>
@@ -110,7 +112,7 @@ function ApplicationCard({
         style={styles.reasonInput}
         value={reason}
         onChangeText={setReason}
-        placeholder="Reason (required to reject or request a different task)"
+        placeholder={application.task ? "Reason (required to reject or request a different task)" : "Reason (required to reject)"}
       />
       <View style={styles.row}>
         <TouchableOpacity
@@ -120,17 +122,19 @@ function ApplicationCard({
         >
           {pendingDecision === "REJECT" ? <ActivityIndicator color={colors.danger} /> : <Text style={styles.rejectButtonText}>Reject</Text>}
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.requestButton, (busy || !reason.trim()) && styles.buttonDisabled]}
-          onPress={() => reason.trim() && onDecide("REQUEST_TASK", reason.trim())}
-          disabled={busy || !reason.trim()}
-        >
-          {pendingDecision === "REQUEST_TASK" ? (
-            <ActivityIndicator color={colors.textMuted} />
-          ) : (
-            <Text style={styles.requestButtonText}>Ask for a different task</Text>
-          )}
-        </TouchableOpacity>
+        {application.task && (
+          <TouchableOpacity
+            style={[styles.requestButton, (busy || !reason.trim()) && styles.buttonDisabled]}
+            onPress={() => reason.trim() && onDecide("REQUEST_TASK", reason.trim())}
+            disabled={busy || !reason.trim()}
+          >
+            {pendingDecision === "REQUEST_TASK" ? (
+              <ActivityIndicator color={colors.textMuted} />
+            ) : (
+              <Text style={styles.requestButtonText}>Ask for a different task</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

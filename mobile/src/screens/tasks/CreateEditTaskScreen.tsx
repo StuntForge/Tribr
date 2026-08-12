@@ -42,7 +42,7 @@ export default function CreateEditTaskScreen({ route, navigation }: any) {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: getJobCategories });
+  const { data: categories } = useQuery({ queryKey: ["job-categories"], queryFn: () => getJobCategories() });
   const { data: existingTask, isLoading: loadingTask } = useQuery({
     queryKey: ["tasks", taskId],
     queryFn: () => getTask(taskId!),

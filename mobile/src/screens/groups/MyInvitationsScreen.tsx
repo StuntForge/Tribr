@@ -76,7 +76,7 @@ export default function MyInvitationsScreen({ route, navigation }: any) {
   const confirmWithdraw = (application: MyApplication) => {
     Alert.alert(
       "Withdraw application?",
-      `This frees up "${application.task.name}" so you can submit it elsewhere.`,
+      application.task ? `This frees up "${application.task.name}" so you can submit it elsewhere.` : "You'll no longer be considered for this Tribe.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -255,9 +255,11 @@ function ApplicationCard({
           </Text>
         </View>
       </View>
-      <Text style={styles.taskLine}>
-        {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
-      </Text>
+      {application.task && (
+        <Text style={styles.taskLine}>
+          {application.task.name} · {application.task.category} · {jobLengthLabelShort(application.task.jobLength)}
+        </Text>
+      )}
       {application.rejectionReason && <Text style={styles.reasonText}>"{application.rejectionReason}"</Text>}
 
       <TouchableOpacity style={styles.viewTasksButton} onPress={onViewGroup}>

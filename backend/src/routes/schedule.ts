@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { forfeitExpiredActiveTask, getCurrentCycle, parseOrder, requireActiveCycle } from "./groups";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
+import { PROPOSAL_WINDOW_DAYS, dayString, withinProposalWindow } from "../services/scheduleWindow";
 
 const router = Router();
 router.use(requireAuth);
@@ -13,25 +14,7 @@ async function requireGroupMember(groupId: string, userId: string) {
   return Boolean(member && member.status === "ACTIVE");
 }
 
-export const PROPOSAL_WINDOW_DAYS = 14;
-
-function dayString(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-// Compared as whole calendar days (not exact timestamps) so the window the
-// owner sees on the calendar and the window the server accepts always agree
-// - no picking a date the UI allowed and then getting rejected on submit.
-// Anchored to when the task became active, not "today".
-function withinProposalWindow(date: Date, anchor: Date): boolean {
-  const targetDay = dayString(date);
-  const anchorDay = dayString(anchor);
-  const maxDay = dayString(new Date(anchor.getTime() + PROPOSAL_WINDOW_DAYS * 24 * 60 * 60 * 1000));
-  return targetDay >= anchorDay && targetDay <= maxDay;
-}
+export { PROPOSAL_WINDOW_DAYS };
 
 // The task owner never needs to respond to their own proposal - "everyone"
 // means every other active member.
@@ -91,7 +74,21 @@ router.get("/me/home-summary", async (req, res) => {
     });
   }
 
-  res.json({ activeGroups, pendingApplicationsToReview, upcomingWorkDays: upcoming });
+  const socialEvents = await prisma.socialEvent.findMany({
+    where: { groupId: { in: groupIds }, confirmedDate: { gte: new Date() } },
+    include: { group: true },
+    orderBy: { confirmedDate: "asc" },
+  });
+  const upcomingSocialEvents = socialEvents.map((e) => ({
+    groupId: e.groupId,
+    groupName: e.group.name,
+    confirmedDate: e.confirmedDate,
+    allDay: e.allDay,
+    startTime: e.startTime,
+    endTime: e.endTime,
+  }));
+
+  res.json({ activeGroups, pendingApplicationsToReview, upcomingWorkDays: upcoming, upcomingSocialEvents });
 });
 
 // 6.3 - who the task owner needs to rate: members who confirmed availability

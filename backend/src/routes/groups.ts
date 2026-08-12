@@ -8,6 +8,7 @@ import { haversineMiles } from "../services/geo";
 import { deleteCloudinaryImage } from "../services/cloudinary";
 import { findProfanity } from "../services/profanity";
 import { JOB_LENGTHS, JOB_LENGTH_RANK } from "./tasks";
+import { PROPOSAL_WINDOW_DAYS } from "../services/scheduleWindow";
 
 // 10.x - a completed task's photos have served their purpose (leader/members
 // could see what the job looked like); deleting them once it's archived
@@ -74,10 +75,6 @@ export function parseOrder(cycle: { taskOrder: string | null }): string[] {
 async function saveOrder(cycleId: string, order: string[]) {
   await prisma.groupCycle.update({ where: { id: cycleId }, data: { taskOrder: JSON.stringify(order) } });
 }
-
-// 5.x - the same 2-week window the owner sees on their calendar. Kept in
-// sync with schedule.ts's PROPOSAL_WINDOW_DAYS.
-const PROPOSAL_WINDOW_DAYS = 14;
 
 // If the active task's 2-week scheduling window has passed with no work day
 // confirmed, it's automatically forgone and the queue advances to the next
@@ -204,11 +201,17 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     where: { id: groupId },
     include: {
       allowedCategories: { include: { category: true } },
+      socialCategory: true,
       leader: true,
       members: { where: { status: "ACTIVE" }, include: { user: true }, orderBy: { joinedAt: "asc" } },
     },
   });
   if (!group) return null;
+
+  // Social Tribes never get a GroupCycle row, so this (and everything
+  // downstream keyed off it - cycleTasks, leaderTask, progress, queue) is
+  // already a clean no-op for them.
+  const socialEvent = group.tribeType === "SOCIAL" ? await prisma.socialEvent.findUnique({ where: { groupId: group.id } }) : null;
 
   const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
   const order = cycle ? parseOrder(cycle) : [];
@@ -285,7 +288,22 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     id: group.id,
     name: group.name,
     description: group.description,
+    tribeType: group.tribeType,
     categories: group.allowedCategories.map((ac) => ({ id: ac.category.id, name: ac.category.name })),
+    socialCategory: group.socialCategory?.name ?? null,
+    dateType: group.dateType,
+    fixedDate: group.fixedDate,
+    fixedAllDay: group.fixedAllDay,
+    fixedStartTime: group.fixedStartTime,
+    fixedEndTime: group.fixedEndTime,
+    socialEvent: socialEvent
+      ? {
+          confirmedDate: socialEvent.confirmedDate,
+          allDay: socialEvent.allDay,
+          startTime: socialEvent.startTime,
+          endTime: socialEvent.endTime,
+        }
+      : null,
     verifiedOnly: group.verifiedOnly,
     minRating: group.minRating,
     locationLabel: group.locationLabel,
@@ -445,18 +463,34 @@ router.get("/groups/browse", async (req, res) => {
     typeof req.query.jobLength === "string" && (JOB_LENGTHS as readonly string[]).includes(req.query.jobLength)
       ? req.query.jobLength
       : undefined;
+  // 11.x - Work/Social Tribe type filter. Omitted = show both types.
+  const tribeType = req.query.tribeType === "WORK" || req.query.tribeType === "SOCIAL" ? req.query.tribeType : undefined;
 
   const groups = await prisma.group.findMany({
     where: {
       state: { in: ["RECRUITING", "READY"] },
       leaderId: { notIn: [...blockedUserIds] },
-      ...(categoryId ? { allowedCategories: { some: { categoryId } } } : {}),
+      ...(tribeType ? { tribeType } : {}),
+      ...(categoryId
+        ? tribeType === "SOCIAL"
+          ? { socialCategoryId: categoryId }
+          : { allowedCategories: { some: { categoryId } } }
+        : {}),
       ...(sizeMin != null ? { sizeMax: { gte: sizeMin } } : {}),
       ...(sizeMax != null ? { sizeMin: { lte: sizeMax } } : {}),
       // A group's maximum job length (durationBand) is a hard filter here -
-      // no point showing a group that couldn't accept a task this long.
+      // no point showing a group that couldn't accept a task this long. Not
+      // meaningful for Social Tribes (durationBand there is just a soft
+      // "Estimated Length" display, not a per-member task gate), so Social
+      // results are always exempted from this filter.
       ...(jobLength
-        ? { OR: [{ durationBand: null }, { durationBand: { in: JOB_LENGTHS.filter((l) => JOB_LENGTH_RANK[l] >= JOB_LENGTH_RANK[jobLength]) } }] }
+        ? {
+            OR: [
+              { tribeType: "SOCIAL" },
+              { durationBand: null },
+              { durationBand: { in: JOB_LENGTHS.filter((l) => JOB_LENGTH_RANK[l] >= JOB_LENGTH_RANK[jobLength]) } },
+            ],
+          }
         : {}),
       // A group's preferred age range/gender are hard visibility filters, not
       // just an "ineligible but visible" gate like verifiedOnly/minRating - a
@@ -478,6 +512,7 @@ router.get("/groups/browse", async (req, res) => {
     },
     include: {
       allowedCategories: { include: { category: true } },
+      socialCategory: true,
       leader: true,
       members: { where: { status: "ACTIVE" } },
     },
@@ -501,16 +536,23 @@ router.get("/groups/browse", async (req, res) => {
       const meetsRating = g.minRating == null || (viewerRatings.overallRating != null && viewerRatings.overallRating >= g.minRating);
       const meetsVerified = !g.verifiedOnly || viewerRatings.completedCycles > 0;
 
-      const leaderTask = await prisma.task.findFirst({
-        where: { groupId: g.id, ownerId: g.leaderId },
-        include: { photos: true, category: true },
-      });
+      const leaderTask =
+        g.tribeType === "WORK"
+          ? await prisma.task.findFirst({ where: { groupId: g.id, ownerId: g.leaderId }, include: { photos: true, category: true } })
+          : null;
 
       return {
         id: g.id,
         name: g.name,
         description: g.description,
+        tribeType: g.tribeType,
         categories: g.allowedCategories.map((ac) => ac.category.name),
+        socialCategory: g.socialCategory?.name ?? null,
+        dateType: g.dateType,
+        fixedDate: g.fixedDate,
+        fixedAllDay: g.fixedAllDay,
+        fixedStartTime: g.fixedStartTime,
+        fixedEndTime: g.fixedEndTime,
         locationLabel: g.locationLabel,
         locationLat: g.locationLat,
         locationLng: g.locationLng,
@@ -557,7 +599,9 @@ router.get("/groups/nearby-recruiting", async (req, res) => {
   const blockedUserIds = new Set(blockedPairs.flatMap((b) => [b.blockerId, b.blockedId]).filter((id) => id !== req.userId));
 
   const groups = await prisma.group.findMany({
-    where: { state: "RECRUITING", leaderId: { notIn: [...blockedUserIds] } },
+    // Social Tribes are excluded here - this carousel's whole framing
+    // ("here's a real job someone wants help with") is Work-specific.
+    where: { state: "RECRUITING", tribeType: "WORK", leaderId: { notIn: [...blockedUserIds] } },
     include: { members: { where: { status: "ACTIVE" }, include: { user: true } } },
     orderBy: { createdAt: "desc" },
     take: 50,
@@ -608,22 +652,51 @@ router.get("/groups/:id", async (req, res) => {
   res.json(group);
 });
 
-const createGroupSchema = z.object({
+const baseGroupFields = {
   name: z.string().min(1).max(100),
   description: z.string().min(1).max(2000),
-  categoryIds: z.array(z.string()).min(1, "Choose at least one allowed category."),
-  locationLabel: z.string().optional(),
-  locationLat: z.number().optional(),
-  locationLng: z.number().optional(),
   preferredAgeMin: z.number().int().optional(),
   preferredAgeMax: z.number().int().optional(),
   preferredGender: z.string().optional(),
   durationBand: z.enum(JOB_LENGTHS).optional(),
   sizeMin: z.number().int().min(3).max(6),
   sizeMax: z.number().int().min(3).max(6),
-  taskId: z.string().min(1),
   verifiedOnly: z.boolean().optional(),
   minRating: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
+};
+
+const workGroupSchema = z.object({
+  ...baseGroupFields,
+  tribeType: z.literal("WORK"),
+  categoryIds: z.array(z.string()).min(1, "Choose at least one allowed category."),
+  taskId: z.string().min(1),
+  locationLabel: z.string().optional(),
+  locationLat: z.number().optional(),
+  locationLng: z.number().optional(),
+});
+
+// 11.x - Social Tribes: one shared activity for the whole group, no
+// per-member task. Location is required here (it isn't for Work); category
+// is a single pick from the SOCIAL JobCategory kind rather than a
+// multi-select "allowed categories" set.
+const socialGroupSchema = z.object({
+  ...baseGroupFields,
+  tribeType: z.literal("SOCIAL"),
+  socialCategoryId: z.string().min(1, "Choose a category for this Tribe."),
+  locationLabel: z.string().min(1, "Location is required for Social Tribes."),
+  locationLat: z.number(),
+  locationLng: z.number(),
+  dateType: z.enum(["FIXED", "SCHEDULE_TOGETHER"]),
+  fixedDate: z.string().optional(),
+  fixedAllDay: z.boolean().optional(),
+  fixedStartTime: z.string().optional(),
+  fixedEndTime: z.string().optional(),
+});
+
+const createGroupSchema = z.discriminatedUnion("tribeType", [workGroupSchema, socialGroupSchema]).superRefine((data, ctx) => {
+  if (data.tribeType === "SOCIAL" && data.dateType === "FIXED" && !data.fixedDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Pick a date for this Tribe.", path: ["fixedDate"] });
+  }
 });
 
 // 4.2 - only subscribers may create groups; creator becomes leader + first member.
@@ -633,7 +706,10 @@ router.post("/groups", async (req, res) => {
     return res.status(403).json({ error: "Only Subscribers can create groups. Free members can join and apply." });
   }
 
-  const parsed = createGroupSchema.safeParse(req.body);
+  // Defaults to WORK when the field is absent so older mobile clients (built
+  // before Social Tribes existed) keep working unchanged against this
+  // endpoint without needing to send a tribeType at all.
+  const parsed = createGroupSchema.safeParse({ tribeType: "WORK", ...req.body });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const input = parsed.data;
 
@@ -644,6 +720,49 @@ router.post("/groups", async (req, res) => {
 
   if (input.sizeMin > input.sizeMax) {
     return res.status(400).json({ error: "Minimum group size can't be greater than the maximum." });
+  }
+
+  if (input.tribeType === "SOCIAL") {
+    const category = await prisma.jobCategory.findFirst({ where: { id: input.socialCategoryId, kind: "SOCIAL", active: true } });
+    if (!category) return res.status(404).json({ error: "Category not found." });
+
+    const activeGroups = await activeMembershipCount(req.userId!);
+    if (activeGroups >= groupLimitFor(owner.subscriptionTier)) {
+      return res.status(403).json({ error: `You're already in ${activeGroups} group(s), which is your plan's limit.` });
+    }
+
+    const group = await prisma.$transaction(async (tx) => {
+      const g = await tx.group.create({
+        data: {
+          name: input.name,
+          description: input.description,
+          locationLabel: input.locationLabel,
+          locationLat: input.locationLat,
+          locationLng: input.locationLng,
+          preferredAgeMin: input.preferredAgeMin,
+          preferredAgeMax: input.preferredAgeMax,
+          preferredGender: input.preferredGender,
+          durationBand: input.durationBand,
+          sizeMin: input.sizeMin,
+          sizeMax: input.sizeMax,
+          verifiedOnly: input.verifiedOnly ?? false,
+          minRating: input.minRating,
+          leaderId: req.userId!,
+          state: "RECRUITING",
+          tribeType: "SOCIAL",
+          socialCategoryId: input.socialCategoryId,
+          dateType: input.dateType,
+          fixedDate: input.dateType === "FIXED" && input.fixedDate ? new Date(input.fixedDate) : null,
+          fixedAllDay: input.dateType === "FIXED" ? input.fixedAllDay ?? true : null,
+          fixedStartTime: input.dateType === "FIXED" ? input.fixedStartTime ?? null : null,
+          fixedEndTime: input.dateType === "FIXED" ? input.fixedEndTime ?? null : null,
+        },
+      });
+      await tx.groupMember.create({ data: { groupId: g.id, userId: req.userId!, isLeader: true, status: "ACTIVE" } });
+      return g;
+    });
+
+    return res.status(201).json(await serializeGroupDetail(group.id, req.userId!));
   }
 
   const task = await prisma.task.findFirst({ where: { id: input.taskId, ownerId: req.userId } });
@@ -682,6 +801,7 @@ router.post("/groups", async (req, res) => {
         leaderId: req.userId!,
         state: "RECRUITING",
         currentCycleNumber: 1,
+        tribeType: "WORK",
       },
     });
     await tx.groupAllowedCategory.createMany({
@@ -734,7 +854,10 @@ router.put("/groups/:id", async (req, res) => {
   res.json(await serializeGroupDetail(group.id, req.userId!));
 });
 
-const applySchema = z.object({ taskId: z.string().min(1), message: z.string().max(500).optional() });
+// taskId is optional here (Social Tribe applications carry no task); it's
+// required in practice for Work Tribes, checked explicitly below since the
+// WORK/SOCIAL branch isn't known until the group itself is loaded.
+const applySchema = z.object({ taskId: z.string().optional(), message: z.string().max(500).optional() });
 
 // 4.5/4.6/4.13 - apply to join, or (for an existing member) resubmit a task for a new cycle.
 router.post("/groups/:id/apply", async (req, res) => {
@@ -793,6 +916,33 @@ router.post("/groups/:id/apply", async (req, res) => {
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { taskId, message } = parsed.data;
+
+  // Social Tribe applications just ask to join the shared activity - no
+  // task selection/category/job-length validation applies at all.
+  if (group.tribeType === "SOCIAL") {
+    const existingMember = await prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId: req.userId! } },
+    });
+    if (!existingMember) {
+      const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+      const activeGroups = await activeMembershipCount(req.userId!);
+      if (activeGroups >= groupLimitFor(owner.subscriptionTier)) {
+        return res.status(403).json({ error: `You're already in ${activeGroups} group(s), which is your plan's limit.` });
+      }
+    }
+
+    const existingApplication = await prisma.groupApplication.findFirst({
+      where: { groupId: group.id, applicantId: req.userId!, status: "PENDING" },
+    });
+    if (existingApplication) return res.status(400).json({ error: "You've already applied to this Tribe." });
+
+    const application = await prisma.groupApplication.create({
+      data: { groupId: group.id, applicantId: req.userId!, taskId: null, message, status: "PENDING" },
+    });
+    return res.status(201).json({ id: application.id, status: application.status });
+  }
+
+  if (!taskId) return res.status(400).json({ error: "Choose a task to apply with." });
 
   const task = await prisma.task.findFirst({ where: { id: taskId, ownerId: req.userId } });
   if (!task) return res.status(404).json({ error: "Task not found." });
@@ -859,7 +1009,7 @@ router.get("/groups/:id/applications", async (req, res) => {
         photoUrl: a.applicant.profilePhotoUrl,
         isPro: a.applicant.subscriptionTier === "SUBSCRIBER",
       },
-      task: { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength },
+      task: a.task ? { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength } : null,
       message: a.message,
       createdAt: a.createdAt,
     }))
@@ -892,6 +1042,13 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
     return res.status(400).json({ error: "A reason is required." });
   }
 
+  // SUGGEST_TASK/REQUEST_TASK only make sense for a Work Tribe application
+  // (there's a task to critique/replace) - a Social Tribe application has
+  // no task at all, so the leader's only choices are approve or reject.
+  if (group.tribeType === "SOCIAL" && (decision === "SUGGEST_TASK" || decision === "REQUEST_TASK")) {
+    return res.status(400).json({ error: "This Tribe has no tasks - approve or reject the application instead." });
+  }
+
   if (decision === "APPROVE") {
     const activeCount = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
     const existingMember = await prisma.groupMember.findUnique({
@@ -905,23 +1062,36 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
       if (!existingMember) {
         await tx.groupMember.create({ data: { groupId: group.id, userId: application.applicantId, status: "ACTIVE" } });
       }
-      await tx.task.update({ where: { id: application.taskId }, data: { status: "APPROVED" } });
+      if (application.taskId) {
+        await tx.task.update({ where: { id: application.taskId }, data: { status: "APPROVED" } });
+      }
       await tx.groupApplication.update({ where: { id: application.id }, data: { status: "APPROVED" } });
     });
 
-    // READY reflects members with an approved task *for this cycle* - on a
-    // renewed cycle, raw membership count is stale until people resubmit.
+    // READY reflects members with an approved task *for this cycle* for a
+    // Work Tribe - a Social Tribe has no tasks, so plain active membership
+    // count against sizeMin is the equivalent readiness signal.
     if (["RECRUITING", "READY"].includes(group.state)) {
-      const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
-      const approvedForCycle = cycle ? await prisma.task.count({ where: { cycleId: cycle.id, status: "APPROVED" } }) : 0;
-      const nextState = approvedForCycle >= group.sizeMin ? "READY" : "RECRUITING";
+      let nextState: string;
+      if (group.tribeType === "SOCIAL") {
+        const activeMembers = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
+        nextState = activeMembers >= group.sizeMin ? "READY" : "RECRUITING";
+      } else {
+        const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
+        const approvedForCycle = cycle ? await prisma.task.count({ where: { cycleId: cycle.id, status: "APPROVED" } }) : 0;
+        nextState = approvedForCycle >= group.sizeMin ? "READY" : "RECRUITING";
+      }
       if (nextState !== group.state) {
         await prisma.group.update({ where: { id: group.id }, data: { state: nextState } });
       }
     }
 
     if (!existingMember) {
-      await postSystemMessage(group.id, `${application.applicant.firstName} joined with "${application.task.name}".`);
+      const joinMessage =
+        group.tribeType === "SOCIAL"
+          ? `${application.applicant.firstName} joined ${group.name}.`
+          : `${application.applicant.firstName} joined with "${application.task!.name}".`;
+      await postSystemMessage(group.id, joinMessage);
       await notifyGroupMembers(group.id, "NEW_MEMBER_JOINED", "New member joined", `${application.applicant.firstName} joined ${group.name}.`, {
         excludeUserId: application.applicantId,
       });
@@ -929,15 +1099,17 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
     await notifyUser(application.applicantId, "APPLICATION_APPROVED", "Application approved", `You're in ${group.name}!`, { groupId: group.id });
   } else if (decision === "REJECT") {
     await prisma.$transaction([
-      releaseTaskTx(application.taskId),
+      ...(application.taskId ? [releaseTaskTx(application.taskId)] : []),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "REJECTED", rejectionReason: reason } }),
     ]);
     await notifyUser(application.applicantId, "APPLICATION_REJECTED", "Application declined", `Your application to ${group.name} was declined: ${reason}`, {
       groupId: group.id,
     });
   } else if (decision === "REQUEST_TASK") {
+    // Only reachable for Work Tribe applications (SOCIAL is rejected above),
+    // which always have a taskId.
     await prisma.$transaction([
-      releaseTaskTx(application.taskId),
+      releaseTaskTx(application.taskId!),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "TASK_REQUESTED", rejectionReason: reason } }),
     ]);
     await notifyUser(
@@ -952,8 +1124,10 @@ router.post("/groups/:id/applications/:appId/decision", async (req, res) => {
     const suggested = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: application.applicantId, status: "AVAILABLE" } });
     if (!suggested) return res.status(400).json({ error: "That task isn't available on the applicant's profile." });
 
+    // Only reachable for Work Tribe applications (SOCIAL is rejected above),
+    // which always have a taskId.
     await prisma.$transaction([
-      releaseTaskTx(application.taskId),
+      releaseTaskTx(application.taskId!),
       prisma.groupApplication.update({ where: { id: application.id }, data: { status: "TASK_SUGGESTED", suggestedTaskId } }),
     ]);
     await notifyUser(
@@ -1021,7 +1195,7 @@ router.post("/groups/:id/applications/:appId/withdraw", async (req, res) => {
   if (!application) return res.status(404).json({ error: "Application not found." });
 
   await prisma.$transaction([
-    releaseTaskTx(application.taskId),
+    ...(application.taskId ? [releaseTaskTx(application.taskId)] : []),
     prisma.groupApplication.update({ where: { id: application.id }, data: { status: "WITHDRAWN" } }),
   ]);
 
@@ -1095,9 +1269,11 @@ router.get("/groups/:id/invitations", async (req, res) => {
   res.json(invitations.map((i) => ({ id: i.id, invitedUser: { id: i.invitedUserId, firstName: i.invitedUser.firstName } })));
 });
 
+// suggestedTaskId is optional here - a Social Tribe invitation just asks
+// someone to join the shared activity, with no task involved.
 const inviteSchema = z.object({
   invitedUserId: z.string().min(1),
-  suggestedTaskId: z.string().min(1, "Choose which of their tasks you're inviting them to join with."),
+  suggestedTaskId: z.string().optional(),
 });
 
 router.post("/groups/:id/invitations", async (req, res) => {
@@ -1111,6 +1287,10 @@ router.post("/groups/:id/invitations", async (req, res) => {
   const parsed = inviteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { invitedUserId, suggestedTaskId } = parsed.data;
+
+  if (group.tribeType === "WORK" && !suggestedTaskId) {
+    return res.status(400).json({ error: "Choose which of their tasks you're inviting them to join with." });
+  }
 
   // 7.11 - blocked users are excluded from invitations.
   const blocked = await prisma.block.findFirst({
@@ -1129,16 +1309,18 @@ router.post("/groups/:id/invitations", async (req, res) => {
   const existingInvite = await prisma.groupInvitation.findFirst({ where: { groupId: group.id, invitedUserId, status: "PENDING" } });
   if (existingInvite) return res.status(400).json({ error: "They already have a pending invitation." });
 
-  const task = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: invitedUserId, status: "AVAILABLE" } });
-  if (!task) return res.status(400).json({ error: "That task isn't available on their profile." });
+  if (group.tribeType === "WORK") {
+    const task = await prisma.task.findFirst({ where: { id: suggestedTaskId, ownerId: invitedUserId, status: "AVAILABLE" } });
+    if (!task) return res.status(400).json({ error: "That task isn't available on their profile." });
 
-  const allowedCategories = await prisma.groupAllowedCategory.findMany({ where: { groupId: group.id } });
-  if (allowedCategories.length > 0 && !allowedCategories.some((ac) => ac.categoryId === task.categoryId)) {
-    return res.status(400).json({ error: "That task's category isn't one this group accepts." });
+    const allowedCategories = await prisma.groupAllowedCategory.findMany({ where: { groupId: group.id } });
+    if (allowedCategories.length > 0 && !allowedCategories.some((ac) => ac.categoryId === task.categoryId)) {
+      return res.status(400).json({ error: "That task's category isn't one this group accepts." });
+    }
   }
 
   const invitation = await prisma.groupInvitation.create({
-    data: { groupId: group.id, invitedUserId, suggestedTaskId },
+    data: { groupId: group.id, invitedUserId, suggestedTaskId: group.tribeType === "WORK" ? suggestedTaskId : null },
   });
 
   await notifyUser(invitedUserId, "GROUP_INVITATION", "Tribe invitation", `You've been invited to join ${group.name}.`, {
@@ -1206,7 +1388,7 @@ router.get("/me/applications", async (req, res) => {
       id: a.id,
       groupId: a.groupId,
       groupName: a.group.name,
-      task: { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength },
+      task: a.task ? { id: a.task.id, name: a.task.name, category: a.task.category.name, jobLength: a.task.jobLength } : null,
       status: a.status,
       rejectionReason: a.rejectionReason,
       createdAt: a.createdAt,
@@ -1273,13 +1455,53 @@ router.post("/invitations/:id/respond", async (req, res) => {
     return res.json({ ok: true });
   }
 
-  const taskId = parsed.data.taskId ?? invitation.suggestedTaskId;
-  if (!taskId) return res.status(400).json({ error: "Choose a task to join with." });
-
   const group = await prisma.group.findUniqueOrThrow({ where: { id: invitation.groupId } });
   if (!["RECRUITING", "READY"].includes(group.state)) {
     return res.status(400).json({ error: "This group isn't recruiting right now." });
   }
+
+  // Social Tribe invitations have no task at all - accepting just joins the
+  // shared activity.
+  if (group.tribeType === "SOCIAL") {
+    const existingSocialMember = await prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId: req.userId! } },
+    });
+    if (!existingSocialMember) {
+      const owner = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+      const activeGroups = await activeMembershipCount(req.userId!);
+      if (activeGroups >= groupLimitFor(owner.subscriptionTier)) {
+        return res.status(403).json({ error: `You're already in ${activeGroups} group(s), which is your plan's limit.` });
+      }
+      const activeCount = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
+      if (activeCount >= group.sizeMax) return res.status(400).json({ error: "This group is already at its maximum size." });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (!existingSocialMember) {
+        await tx.groupMember.create({ data: { groupId: group.id, userId: req.userId!, status: "ACTIVE" } });
+      }
+      await tx.groupInvitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED" } });
+    });
+
+    if (["RECRUITING", "READY"].includes(group.state)) {
+      const activeMembers = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
+      const nextState = activeMembers >= group.sizeMin ? "READY" : "RECRUITING";
+      if (nextState !== group.state) {
+        await prisma.group.update({ where: { id: group.id }, data: { state: nextState } });
+      }
+    }
+
+    const socialInviteeName = (await prisma.user.findUnique({ where: { id: req.userId } }))?.firstName;
+    await postSystemMessage(group.id, `${socialInviteeName} joined ${group.name}.`);
+    await notifyGroupMembers(group.id, "NEW_MEMBER_JOINED", "New member joined", `${socialInviteeName} joined ${group.name}.`, {
+      excludeUserId: req.userId,
+    });
+
+    return res.json({ ok: true });
+  }
+
+  const taskId = parsed.data.taskId ?? invitation.suggestedTaskId;
+  if (!taskId) return res.status(400).json({ error: "Choose a task to join with." });
 
   const task = await prisma.task.findFirst({ where: { id: taskId, ownerId: req.userId, status: "AVAILABLE" } });
   if (!task) return res.status(400).json({ error: "That task isn't available." });
@@ -1668,7 +1890,7 @@ router.post("/groups/:id/disband", async (req, res) => {
     await Promise.all(tasksInCycle.map((t) => releaseTask(t.id)));
   }
   const pendingApps = await prisma.groupApplication.findMany({ where: { groupId: group.id, status: "PENDING" } });
-  await Promise.all(pendingApps.map((a) => releaseTask(a.taskId)));
+  await Promise.all(pendingApps.filter((a) => a.taskId).map((a) => releaseTask(a.taskId!)));
   await prisma.groupApplication.updateMany({ where: { groupId: group.id, status: "PENDING" }, data: { status: "REJECTED", rejectionReason: "Tribe disbanded." } });
 
   await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
@@ -1685,6 +1907,46 @@ router.post("/groups/:id/start-work", async (req, res) => {
   if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can start work." });
   if (!["RECRUITING", "READY"].includes(group.state)) {
     return res.status(400).json({ error: "This group has already started work." });
+  }
+
+  // Social Tribes have no task queue at all - starting just requires enough
+  // members. Fixed Date Tribes create their confirmed event immediately (no
+  // scheduling round - every member is implicitly committed); Schedule
+  // Together Tribes just open their 2-week proposal window, and the leader
+  // proposes dates afterwards via the Social scheduling endpoints.
+  if (group.tribeType === "SOCIAL") {
+    const activeMembers = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
+    if (activeMembers < group.sizeMin) {
+      return res.status(400).json({ error: `You need at least ${group.sizeMin} members to start.` });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.group.update({
+        where: { id: group.id },
+        data: {
+          state: "WORKING",
+          socialScheduleWindowStart: group.dateType === "SCHEDULE_TOGETHER" ? new Date() : null,
+        },
+      });
+      if (group.dateType === "FIXED" && group.fixedDate) {
+        await tx.socialEvent.create({
+          data: {
+            groupId: group.id,
+            confirmedDate: group.fixedDate,
+            allDay: group.fixedAllDay ?? true,
+            startTime: group.fixedStartTime,
+            endTime: group.fixedEndTime,
+          },
+        });
+      }
+    });
+
+    await postSystemMessage(group.id, "This Tribe has started!");
+    await notifyGroupMembers(group.id, "SOCIAL_TRIBE_STARTED", "Tribe started", `${group.name} has started.`, {
+      excludeUserId: req.userId,
+    });
+
+    return res.json(await serializeGroupDetail(group.id, req.userId!));
   }
 
   const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
