@@ -252,8 +252,8 @@ export function castKickBallot(voteId: string, choice: "YES" | "NO") {
   });
 }
 
-export function leaveGroup(groupId: string) {
-  return apiFetch<{ ok: true }>(`/api/groups/${groupId}/leave`, { method: "POST" });
+export function leaveGroup(groupId: string, message?: string) {
+  return apiFetch<{ ok: true }>(`/api/groups/${groupId}/leave`, { method: "POST", body: { message } });
 }
 
 export function disbandGroup(groupId: string) {
@@ -301,10 +301,6 @@ export function rateHost(groupId: string, taskId: string, hosting: number, accur
     method: "POST",
     body: { hosting, accuracy, attitude },
   });
-}
-
-export function completeCycle(groupId: string, action: "DISBAND" | "START_NEW_CYCLE") {
-  return apiFetch<GroupDetail>(`/api/groups/${groupId}/complete-cycle`, { method: "POST", body: { action } });
 }
 
 export function requestDissolution(groupId: string) {

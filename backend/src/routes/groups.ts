@@ -1286,18 +1286,26 @@ router.post("/invitations/:id/respond", async (req, res) => {
   res.json({ ok: true });
 });
 
+const leaveSchema = z.object({ message: z.string().trim().max(300).optional() });
+
 // 4.5 - members may leave freely while recruiting. Also allowed once a cycle
-// has COMPLETED and the leader hasn't yet started a new one or disbanded -
-// members shouldn't be stuck waiting on the leader forever.
+// has COMPLETED - there's no more "start a new cycle" to wait on (the cycle
+// mechanic was removed): every member, including the leader, leaves
+// individually via this same endpoint once work is done, optionally with a
+// short goodbye message. Once the last active member leaves a COMPLETED
+// Tribe, it's finalized as DISBANDED.
 router.post("/groups/:id/leave", async (req, res) => {
   const group = await prisma.group.findUnique({ where: { id: req.params.id } });
   if (!group) return res.status(404).json({ error: "Group not found." });
-  if (group.leaderId === req.userId) {
+  if (group.leaderId === req.userId && group.state !== "COMPLETED") {
     return res.status(400).json({ error: "As the leader, disband the group instead of leaving." });
   }
   if (!["RECRUITING", "READY", "COMPLETED"].includes(group.state)) {
     return res.status(400).json({ error: "You can't leave while the group is actively working through a cycle." });
   }
+
+  const parsed = leaveSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const member = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: group.id, userId: req.userId! } } });
   if (!member || member.status !== "ACTIVE") return res.status(404).json({ error: "You're not a member of this group." });
@@ -1322,7 +1330,17 @@ router.post("/groups/:id/leave", async (req, res) => {
   }
 
   const leavingUser = await prisma.user.findUnique({ where: { id: req.userId } });
-  await postSystemMessage(group.id, `${leavingUser?.firstName} left the group.`);
+  await postSystemMessage(
+    group.id,
+    parsed.data.message ? `${leavingUser?.firstName} left the Tribe: "${parsed.data.message}"` : `${leavingUser?.firstName} left the Tribe.`
+  );
+
+  if (group.state === "COMPLETED") {
+    const remainingActive = await prisma.groupMember.count({ where: { groupId: group.id, status: "ACTIVE" } });
+    if (remainingActive === 0) {
+      await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
+    }
+  }
 
   res.json({ ok: true });
 });
@@ -1834,48 +1852,24 @@ router.post("/groups/:id/tasks/:taskId/rate-host", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Once every active task is settled, the Tribe is done - there's no more
+// "start a new cycle" (that mechanic was removed). Every member leaves
+// individually via POST /groups/:id/leave when they're ready, and the Tribe
+// is finalized as DISBANDED once the last one does.
 async function handleCycleComplete(groupId: string) {
   const group = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
   const cycle = await getCurrentCycle(groupId, group.currentCycleNumber);
   // 6.7 - ratings collected during this cycle become part of public reputation now.
   if (cycle) await revealCycleRatings(cycle.id);
-  await postSystemMessage(groupId, "Every task in this cycle is complete!");
-  await notifyUser(group.leaderId, "CYCLE_COMPLETE", "Cycle complete", "Choose whether to start a new cycle or end the group.", { groupId: group.id });
-}
 
-const completeCycleSchema = z.object({ action: z.enum(["DISBAND", "START_NEW_CYCLE"]) });
-
-// 4.12/4.13 - once every active task is settled, the leader chooses what's next.
-router.post("/groups/:id/complete-cycle", async (req, res) => {
-  const group = await prisma.group.findUnique({ where: { id: req.params.id } });
-  if (!group) return res.status(404).json({ error: "Group not found." });
-  if (group.leaderId !== req.userId) return res.status(403).json({ error: "Only the group leader can do that." });
-  if (group.state !== "COMPLETED") return res.status(400).json({ error: "This cycle isn't finished yet." });
-
-  const parsed = completeCycleSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-
-  const cycle = await getCurrentCycle(group.id, group.currentCycleNumber);
+  // Forgone tasks (never scheduled in time) go back to their owner's
+  // personal library now that the Tribe is done with them.
   const forgoneTasks = cycle ? await prisma.task.findMany({ where: { cycleId: cycle.id, status: "FORGONE" } }) : [];
   await Promise.all(forgoneTasks.map((t) => releaseTask(t.id)));
 
-  if (parsed.data.action === "DISBAND") {
-    await prisma.group.update({ where: { id: group.id }, data: { state: "DISBANDED" } });
-    await notifyGroupMembers(group.id, "GROUP_DISBANDED", "Tribe disbanded", `${group.name} has ended.`, { excludeUserId: req.userId });
-  } else {
-    await prisma.$transaction(async (tx) => {
-      const nextCycleNumber = group.currentCycleNumber + 1;
-      await tx.groupCycle.create({ data: { groupId: group.id, cycleNumber: nextCycleNumber } });
-      await tx.group.update({ where: { id: group.id }, data: { state: "RECRUITING", currentCycleNumber: nextCycleNumber } });
-    });
-    await postSystemMessage(group.id, "Starting a new cycle — submit a task to continue.");
-    await notifyGroupMembers(group.id, "START_NEW_CYCLE", "New cycle starting", `${group.name} is starting a new cycle. Submit a task to continue.`, {
-      excludeUserId: req.userId,
-    });
-  }
-
-  res.json(await serializeGroupDetail(group.id, req.userId!));
-});
+  await postSystemMessage(groupId, "Every task is complete! Leave whenever you're ready to wrap up this Tribe.");
+  await notifyGroupMembers(groupId, "CYCLE_COMPLETE", "Tribe complete!", "Every task is done - head to the Tribe to wrap things up.");
+}
 
 // ---------- Dissolution (4.14) ----------
 

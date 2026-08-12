@@ -21,7 +21,7 @@ const STATE_LABEL: Record<GroupState, string> = {
   RECRUITING: "Recruiting",
   READY: "Ready to start",
   WORKING: "Working",
-  COMPLETED: "Cycle complete",
+  COMPLETED: "Work complete",
   DISSOLUTION: "Dissolution vote",
   DISBANDED: "Disbanded",
 };

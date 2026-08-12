@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyToGroup,
   castDissolutionBallot,
-  completeCycle,
   deferTask,
   disbandGroup,
   forgoTask,
@@ -47,7 +47,20 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [manageMode, setManageMode] = useState(false);
 
-  const { data: group, isLoading } = useQuery({ queryKey: ["group", groupId], queryFn: () => getGroup(groupId) });
+  // Polls while this screen is open (not just on mount) and refetches on
+  // focus, so a member joining/leaving or the Tribe disbanding shows up
+  // live instead of needing to navigate away and back.
+  const { data: group, isLoading, refetch: refetchGroup } = useQuery({
+    queryKey: ["group", groupId],
+    queryFn: () => getGroup(groupId),
+    refetchInterval: 8000,
+  });
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refetchGroup();
+    }, [refetchGroup])
+  );
   const { data: actionItems } = useQuery({ queryKey: ["action-items"], queryFn: getActionItems });
   const myActionItems = (actionItems ?? []).filter((a) => a.groupId === groupId);
   const { data: tasks } = useQuery({ queryKey: ["tasks"], queryFn: getMyTasks });
@@ -88,7 +101,6 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   const startWorkMutation = useAction(() => startWork(groupId));
   const deferMutation = useAction((taskId: string) => deferTask(groupId, taskId));
   const forgoMutation = useAction((taskId: string) => forgoTask(groupId, taskId));
-  const completeCycleMutation = useAction((action: "DISBAND" | "START_NEW_CYCLE") => completeCycle(groupId, action));
   const requestDissolutionMutation = useAction(() => requestDissolution(groupId));
   const ballotMutation = useAction((choice: "YES" | "NO") => castDissolutionBallot(groupId, group!.dissolutionVote!.id, choice));
   const removeMemberMutation = useAction((userId: string) => removeMember(groupId, userId));
@@ -103,7 +115,6 @@ export default function GroupDetailScreen({ route, navigation }: any) {
     startWorkMutation.isPending ||
     deferMutation.isPending ||
     forgoMutation.isPending ||
-    completeCycleMutation.isPending ||
     requestDissolutionMutation.isPending ||
     ballotMutation.isPending ||
     removeMemberMutation.isPending;
@@ -143,18 +154,10 @@ export default function GroupDetailScreen({ route, navigation }: any) {
   };
 
   const confirmLeave = () => {
-    if (group.state === "COMPLETED") {
-      Alert.alert(
-        "Leave this Tribe?",
-        "You'll lose the option to continue into another cycle with this Tribe. No other downside.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Leave", style: "destructive", onPress: () => leaveMutation.mutate(undefined as never) },
-        ]
-      );
-      return;
-    }
-    leaveMutation.mutate(undefined as never);
+    Alert.alert("Leave this Tribe?", "You can rejoin later if it's still recruiting.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Leave", style: "destructive", onPress: () => leaveMutation.mutate(undefined as never) },
+    ]);
   };
 
   const confirmRemoveMember = (userId: string, firstName: string | null) => {
@@ -583,26 +586,16 @@ export default function GroupDetailScreen({ route, navigation }: any) {
               </TouchableOpacity>
             </>
           )}
-          {group.isLeader && group.state === "COMPLETED" && (
-            <>
-              <TouchableOpacity
-                style={[styles.primaryButtonFull, busy && styles.buttonDisabled]}
-                onPress={() => completeCycleMutation.mutate("START_NEW_CYCLE")}
-                disabled={busy}
-              >
-                <Text style={styles.primaryButtonFullText}>Start new cycle</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.dangerButtonFull, busy && styles.buttonDisabled]}
-                onPress={() => completeCycleMutation.mutate("DISBAND")}
-                disabled={busy}
-              >
-                <Ionicons name="trash" size={16} color={colors.danger} />
-                <Text style={styles.dangerButtonFullText}>End Tribe & disband</Text>
-              </TouchableOpacity>
-            </>
+          {(group.isMember || group.isLeader) && group.state === "COMPLETED" && (
+            <TouchableOpacity
+              style={styles.primaryButtonFull}
+              onPress={() => navigation.navigate("CompleteTribe", { groupId, groupName: group.name })}
+            >
+              <Ionicons name="checkmark-circle" size={16} color="#fff" />
+              <Text style={styles.primaryButtonFullText}>Work's done - leave the Tribe</Text>
+            </TouchableOpacity>
           )}
-          {!group.isLeader && group.isMember && ["RECRUITING", "READY", "COMPLETED"].includes(group.state) && (
+          {!group.isLeader && group.isMember && ["RECRUITING", "READY"].includes(group.state) && (
             <TouchableOpacity style={[styles.dangerButtonFull, busy && styles.buttonDisabled]} onPress={confirmLeave} disabled={busy}>
               <Text style={styles.dangerButtonFullText}>Leave Tribe</Text>
             </TouchableOpacity>
