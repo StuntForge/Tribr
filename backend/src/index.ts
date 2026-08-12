@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import path from "node:path";
 import authRoutes from "./routes/auth";
 import profileRoutes from "./routes/profile";
 import uploadRoutes from "./routes/uploads";
@@ -24,7 +23,6 @@ app.use(cors());
 // must be mounted before the global JSON body parser.
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookRoutes);
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

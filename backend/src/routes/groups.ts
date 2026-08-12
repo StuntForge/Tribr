@@ -1,28 +1,20 @@
 import { Router } from "express";
 import { z } from "zod";
-import path from "node:path";
-import fs from "node:fs/promises";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { notifyGroupMembers, notifyUser, postSystemMessage } from "../services/notify";
 import { computeRatingSummary, revealCycleRatings } from "../services/ratings";
 import { haversineMiles } from "../services/geo";
+import { deleteCloudinaryImage } from "../services/cloudinary";
 import { JOB_LENGTHS, JOB_LENGTH_RANK } from "./tasks";
-
-const uploadDir = path.join(__dirname, "..", "..", "uploads");
 
 // 10.x - a completed task's photos have served their purpose (leader/members
 // could see what the job looked like); deleting them once it's archived
-// keeps disk usage bounded as the app accumulates years of history. The
-// text record (name/description/etc) stays untouched.
+// keeps storage bounded as the app accumulates years of history. The text
+// record (name/description/etc) stays untouched.
 async function deletePhotosForTask(taskId: string) {
   const photos = await prisma.taskPhoto.findMany({ where: { taskId } });
-  await Promise.all(
-    photos.map(async (p) => {
-      const filename = p.url.split("/").pop();
-      if (filename) await fs.unlink(path.join(uploadDir, filename)).catch(() => {});
-    })
-  );
+  await Promise.all(photos.map((p) => deleteCloudinaryImage(p.url)));
   await prisma.taskPhoto.deleteMany({ where: { taskId } });
 }
 
