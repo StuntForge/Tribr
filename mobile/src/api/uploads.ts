@@ -23,5 +23,8 @@ export async function uploadPhoto(localUri: string): Promise<{ url: string }> {
 
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error ?? "Upload failed.");
-  return { url: `${API_BASE_URL}${data.url}` };
+  // The backend now returns a full Cloudinary URL, not a relative path -
+  // prepending API_BASE_URL here (a leftover from the old local-disk
+  // upload route) produced a mangled, unloadable URL.
+  return { url: data.url };
 }
