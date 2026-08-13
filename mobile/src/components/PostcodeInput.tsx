@@ -63,10 +63,19 @@ export default function PostcodeInput({
   // what would silently push billing onto the metered per-keystroke tier
   // instead of the free session one.
   const sessionTokenRef = useRef<string | null>(null);
+  // Selecting a suggestion changes the text (via onChangePostcode) to show
+  // what was picked - without this, that text change alone re-triggers the
+  // search effect below ~350ms later, silently repopulating the suggestion
+  // list right as a selection should be settling, which looked exactly like
+  // "tapping a result does nothing."
+  const lastSelectedLabelRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const query = postcode.trim();
+    if (query === lastSelectedLabelRef.current) {
+      return;
+    }
     if (query.length < 3) {
       setSuggestions([]);
       setSearching(false);
@@ -110,6 +119,7 @@ export default function PostcodeInput({
     setSearchFailed(false);
     setSearchedEmpty(false);
     setError(null);
+    lastSelectedLabelRef.current = s.label;
     onChangePostcode(s.label);
     const sessionToken = sessionTokenRef.current ?? newSessionToken();
     setResolving(true);
@@ -140,6 +150,7 @@ export default function PostcodeInput({
       // the coordinates are already exactly what radius search needs, and
       // skipping that extra lookup keeps this free and removes a step that
       // was failing outright before.
+      lastSelectedLabelRef.current = "Current location";
       onChangePostcode("Current location");
       onResolved({ postcode: "Current location", label: "Current location", lat: position.coords.latitude, lng: position.coords.longitude });
     } catch {
