@@ -388,6 +388,7 @@ export default function CreateGroupScreen({ route, navigation }: any) {
                 time={fixedTime}
                 onChangeDate={setFixedDateString}
                 onChangeTime={setFixedTime}
+                onClear={() => setFixedDateString(null)}
               />
             )}
           </>
@@ -496,11 +497,13 @@ function FixedDateTimePicker({
   time,
   onChangeDate,
   onChangeTime,
+  onClear,
 }: {
   dateString: string | null;
   time: string;
   onChangeDate: (v: string) => void;
   onChangeTime: (v: string) => void;
+  onClear: () => void;
 }) {
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const markedDates: Record<string, any> = {};
@@ -508,22 +511,29 @@ function FixedDateTimePicker({
 
   return (
     <View>
-      <Calendar
-        minDate={toDateString(new Date())}
-        markedDates={markedDates}
-        onDayPress={(day: { dateString: string }) => {
-          onChangeDate(day.dateString);
-          setTimePickerOpen(true);
-        }}
-        theme={calendarTheme}
-        style={styles.calendar}
-      />
+      {!dateString && (
+        <Calendar
+          minDate={toDateString(new Date())}
+          markedDates={markedDates}
+          onDayPress={(day: { dateString: string }) => {
+            onChangeDate(day.dateString);
+            setTimePickerOpen(true);
+          }}
+          theme={calendarTheme}
+          style={styles.calendar}
+        />
+      )}
       {dateString && (
-        <TouchableOpacity style={styles.timeButton} onPress={() => setTimePickerOpen(true)}>
-          <Text style={styles.timeButtonText}>
-            {formatDateLabel(dateString)} · {formatTime12h(time)}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.timeButtonRow}>
+          <TouchableOpacity style={[styles.timeButton, styles.timeButtonFlex]} onPress={() => setTimePickerOpen(true)}>
+            <Text style={styles.timeButtonText}>
+              {formatDateLabel(dateString)} · {formatTime12h(time)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.timeClearButton} onPress={onClear}>
+            <Ionicons name="close" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
       )}
       <Modal visible={timePickerOpen} transparent animationType="fade" onRequestClose={() => setTimePickerOpen(false)}>
         <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={() => setTimePickerOpen(false)}>
@@ -618,6 +628,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     overflow: "hidden",
   },
+  timeButtonRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm },
+  timeButtonFlex: { flex: 1 },
   timeButton: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -627,6 +639,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   timeButtonText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
+  timeClearButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    width: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   pickerBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, padding: spacing.lg, maxHeight: "60%" },
   pickerTitle: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: spacing.sm },
