@@ -35,6 +35,9 @@ export interface ScheduleInfo {
     endTime: string | null;
     foodProvided: boolean;
     address: string | null;
+    locationLat: number | null;
+    locationLng: number | null;
+    addressHiddenFromMe: boolean;
   } | null;
 }
 

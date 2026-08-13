@@ -144,6 +144,11 @@ router.get("/groups/:id/tasks/:taskId/schedule", async (req, res) => {
   const isOwner = task.ownerId === req.userId;
   // 5.6 - HOME tasks resolve to the owner's current home address; CHOOSE tasks store their own.
   const exactAddress = task.locationType === "HOME" ? task.owner.homeAddress : task.exactAddress;
+  // Directions reuse the coordinates already captured for the approximate
+  // location (HOME -> owner's profile location, CHOOSE -> the task's own) -
+  // no separate lookup, since those are already resolved and already free.
+  const locationLat = task.locationType === "HOME" ? task.owner.locationLat : task.locationLat;
+  const locationLng = task.locationType === "HOME" ? task.owner.locationLng : task.locationLng;
 
   const proposal = await prisma.availabilityProposal.findFirst({
     where: { taskId: task.id },
@@ -152,6 +157,18 @@ router.get("/groups/:id/tasks/:taskId/schedule", async (req, res) => {
   });
 
   const workDay = await prisma.workDay.findUnique({ where: { taskId: task.id } });
+
+  // The exact address (and the directions link built from it) only ever
+  // reaches the owner and members who actually confirmed they're available
+  // for this specific date - not every group member, and not someone who
+  // said they can't make it.
+  let canSeeExactLocation = isOwner;
+  if (!canSeeExactLocation && workDay) {
+    const myResponse = await prisma.availabilityResponse.findFirst({
+      where: { userId: req.userId, available: true, dateOption: { proposal: { taskId: task.id }, date: workDay.confirmedDate } },
+    });
+    canSeeExactLocation = Boolean(myResponse);
+  }
 
   let dietaryByOption: Record<string, string[]> | undefined;
   if (isOwner && proposal) {
@@ -207,8 +224,15 @@ router.get("/groups/:id/tasks/:taskId/schedule", async (req, res) => {
           startTime: workDay.startTime,
           endTime: workDay.endTime,
           foodProvided: workDay.foodProvided,
-          // 5.6 - exact address only ever reaches confirmed group members.
-          address: exactAddress,
+          // 5.6 - exact address (and directions) only ever reach the owner
+          // and members who confirmed they're actually attending this date.
+          address: canSeeExactLocation ? exactAddress : null,
+          locationLat: canSeeExactLocation ? locationLat : null,
+          locationLng: canSeeExactLocation ? locationLng : null,
+          // Distinguishes "no address was ever set" from "one exists but
+          // isn't shared with you yet" - both otherwise look identical
+          // (address: null) and would render a misleading message.
+          addressHiddenFromMe: !canSeeExactLocation && Boolean(exactAddress),
         }
       : null,
   });

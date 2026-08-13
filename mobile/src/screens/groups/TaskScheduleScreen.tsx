@@ -15,6 +15,8 @@ import {
   submitAvailability,
 } from "../../api/schedule";
 import CalendarPicker, { calendarTheme, formatDateLabel, formatTime12h, toDateString } from "../../components/CalendarPicker";
+import { openInMaps } from "../../utils/openInMaps";
+import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, spacing } from "../../theme";
 
 export default function TaskScheduleScreen({ route, navigation }: any) {
@@ -226,7 +228,20 @@ function ConfirmedView({
       <Text style={styles.confirmedDate}>{dateLabel}</Text>
       <Text style={styles.hint}>{workDay!.foodProvided ? "Snacks provided" : "No food provided - bring your own"}</Text>
       {workDay!.address ? (
-        <Text style={styles.address}>{workDay!.address}</Text>
+        <>
+          <Text style={styles.address}>{workDay!.address}</Text>
+          {workDay!.locationLat != null && workDay!.locationLng != null && (
+            <TouchableOpacity
+              style={styles.directionsLink}
+              onPress={() => openInMaps(workDay!.locationLat!, workDay!.locationLng!)}
+            >
+              <Ionicons name="navigate" size={14} color={colors.primary} />
+              <Text style={styles.directionsLinkText}>Get directions</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      ) : workDay!.addressHiddenFromMe ? (
+        <Text style={styles.hint}>The exact address is shared once you've confirmed you can make this date.</Text>
       ) : (
         <Text style={styles.hint}>No exact address was set for this task.</Text>
       )}
@@ -393,6 +408,8 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.xs },
   confirmedDate: { fontSize: 16, fontWeight: "600", color: colors.primary, marginTop: spacing.xs },
   address: { fontSize: 14, color: colors.text, marginTop: spacing.sm, fontWeight: "600" },
+  directionsLink: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs },
+  directionsLinkText: { fontSize: 13, color: colors.primary, fontWeight: "600" },
   calendar: {
     borderWidth: 1,
     borderColor: colors.border,
