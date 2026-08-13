@@ -27,6 +27,7 @@ import ProBadge from "../../components/ProBadge";
 import { useToast } from "../../components/Toast";
 import { categoryThumbnail } from "../../constants/categoryThumbnails";
 import { socialCategoryIcon } from "../../constants/socialCategoryIcons";
+import { openInMaps } from "../../utils/openInMaps";
 import { colors, radii, shadows, spacing, type } from "../../theme";
 
 function formatSocialEventDate(date: string, allDay: boolean, startTime: string | null): string {
@@ -255,9 +256,21 @@ export default function GroupDetailScreen({ route, navigation }: any) {
             )}
             {/* Shown to prospective (non-member) applicants too, same as the
                 date above - both are what someone needs to decide whether to
-                apply, not member-only information. */}
+                apply, not member-only information. Tappable straight to the
+                phone's own Maps app for directions - no lookup needed, we
+                already have the coordinates. */}
             {group.tribeType === "SOCIAL" && group.locationLabel && (
-              <Text style={styles.requirementMeta}>{group.locationLabel}</Text>
+              <TouchableOpacity
+                onPress={() => group.locationLat != null && group.locationLng != null && openInMaps(group.locationLat, group.locationLng)}
+                disabled={group.locationLat == null || group.locationLng == null}
+              >
+                <View style={styles.locationLinkRow}>
+                  <Text style={styles.requirementMeta}>{group.locationLabel}</Text>
+                  {group.locationLat != null && group.locationLng != null && (
+                    <Ionicons name="open-outline" size={13} color={colors.primary} />
+                  )}
+                </View>
+              </TouchableOpacity>
             )}
             {(group.verifiedOnly || group.minRating != null || group.preferredGender || group.preferredAgeMin != null || group.preferredAgeMax != null) && (
               <Text style={styles.requirementMeta}>
@@ -808,6 +821,7 @@ const styles = StyleSheet.create({
   heroTitle: { ...type.h2, flex: 1 },
   heroMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   requirementMeta: { fontSize: 12, color: colors.primary, fontWeight: "600", marginTop: 2 },
+  locationLinkRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   heroDescription: { fontSize: 14, color: colors.text, marginTop: spacing.sm, lineHeight: 20 },
   eventDetailRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: spacing.sm },
   eventDetailText: { fontSize: 13, color: colors.text },

@@ -413,6 +413,8 @@ async function serializeGroupDetail(groupId: string, viewerId: string) {
     verifiedOnly: group.verifiedOnly,
     minRating: group.minRating,
     locationLabel: group.locationLabel,
+    locationLat: group.locationLat,
+    locationLng: group.locationLng,
     preferredAgeMin: group.preferredAgeMin,
     preferredAgeMax: group.preferredAgeMax,
     preferredGender: group.preferredGender,

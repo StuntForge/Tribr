@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
-import { reverseGeocode, searchPlaces } from "../api/geocode";
+import { resolvePlace, searchPlaces, PlaceSuggestion } from "../api/geocode";
 import { colors, radii, spacing } from "../theme";
 
 export interface ResolvedLocation {
@@ -12,12 +12,20 @@ export interface ResolvedLocation {
   lng: number;
 }
 
-// Live address/place autocomplete backed by OpenStreetMap's Nominatim
-// (proxied through the backend - see api/geocode.ts), verified against a
-// real place database so results land in the right spot on the map. Prop
-// names are kept from the original UK-postcode-only version (postcodes.io)
-// rather than renamed, since every screen that uses this component only
-// cares about the resolved {label, lat, lng} - swapping the search provider
+// A fresh random id per search - not a real UUID, just needs to be unique
+// enough to tell Google's billing system "these keystrokes + this one
+// Place Details call are all the same search." No crypto library needed
+// for that, so none was added (avoids an otherwise-unnecessary native
+// rebuild).
+function newSessionToken(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Live address/place autocomplete backed by Google Places API (New)
+// (proxied through the backend - see api/geocode.ts). Prop names are kept
+// from the original UK-postcode-only version (postcodes.io) rather than
+// renamed, since every screen that uses this component only cares about
+// the resolved {label, lat, lng} - swapping the search provider (twice now)
 // needed no changes anywhere else.
 export default function PostcodeInput({
   postcode,
@@ -30,8 +38,9 @@ export default function PostcodeInput({
   onResolved: (result: ResolvedLocation) => void;
   placeholder?: string;
 }) {
-  const [suggestions, setSuggestions] = useState<{ label: string; lat: number; lng: number }[]>([]);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [searchFailed, setSearchFailed] = useState(false);
   const [searchedEmpty, setSearchedEmpty] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -48,6 +57,13 @@ export default function PostcodeInput({
     []
   );
 
+  // One token per search "session" - created the moment a new search
+  // starts, reused for every keystroke in it and the final resolve() call,
+  // then thrown away. Reusing it past that (or never generating one) is
+  // what would silently push billing onto the metered per-keystroke tier
+  // instead of the free session one.
+  const sessionTokenRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const query = postcode.trim();
@@ -58,18 +74,16 @@ export default function PostcodeInput({
       setSearchedEmpty(false);
       return;
     }
+    if (!sessionTokenRef.current) sessionTokenRef.current = newSessionToken();
     setSearching(true);
     setSearchFailed(false);
     setSearchedEmpty(false);
     const requestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(async () => {
-      // The backend is on Render's free tier, which can take 30-50s to wake
-      // from a cold start - give it real time to respond rather than making
-      // the search look broken, but don't hang forever either.
       const timeoutController = new AbortController();
-      const timeout = setTimeout(() => timeoutController.abort(), 45000);
+      const timeout = setTimeout(() => timeoutController.abort(), 15000);
       try {
-        const results = await searchPlaces(query, timeoutController.signal);
+        const results = await searchPlaces(query, sessionTokenRef.current!, timeoutController.signal);
         clearTimeout(timeout);
         if (!mountedRef.current || requestIdRef.current !== requestId) return;
         setSuggestions(results);
@@ -90,14 +104,26 @@ export default function PostcodeInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postcode]);
 
-  const selectSuggestion = (s: { label: string; lat: number; lng: number }) => {
+  const selectSuggestion = async (s: PlaceSuggestion) => {
     requestIdRef.current++; // invalidate any in-flight search
     setSuggestions([]);
     setSearchFailed(false);
     setSearchedEmpty(false);
     setError(null);
     onChangePostcode(s.label);
-    onResolved({ postcode: s.label, label: s.label, lat: s.lat, lng: s.lng });
+    const sessionToken = sessionTokenRef.current ?? newSessionToken();
+    setResolving(true);
+    try {
+      const resolved = await resolvePlace(s.placeId, sessionToken);
+      onResolved({ postcode: resolved.label || s.label, label: resolved.label || s.label, lat: resolved.lat, lng: resolved.lng });
+    } catch {
+      setError("Couldn't confirm that place's location - please try again.");
+    } finally {
+      setResolving(false);
+      // Session is over either way (selected, or failed to resolve) - the
+      // next search starts a fresh one.
+      sessionTokenRef.current = null;
+    }
   };
 
   const useCurrentLocation = async () => {
@@ -110,12 +136,12 @@ export default function PostcodeInput({
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
-      const result = await reverseGeocode(position.coords.latitude, position.coords.longitude);
-      if (!result) {
-        setError("Couldn't find an address for your location. Enter it manually instead.");
-        return;
-      }
-      selectSuggestion(result);
+      // Used directly rather than reverse-geocoded into a readable address -
+      // the coordinates are already exactly what radius search needs, and
+      // skipping that extra lookup keeps this free and removes a step that
+      // was failing outright before.
+      onChangePostcode("Current location");
+      onResolved({ postcode: "Current location", label: "Current location", lat: position.coords.latitude, lng: position.coords.longitude });
     } catch {
       setError("Couldn't determine your location. Enter your address manually instead.");
     } finally {
@@ -147,6 +173,7 @@ export default function PostcodeInput({
       </TouchableOpacity>
 
       {searching && <Text style={styles.hint}>Searching…</Text>}
+      {resolving && <Text style={styles.hint}>Confirming location…</Text>}
       {!searching && searchFailed && (
         <Text style={styles.error}>Couldn't reach the location search. Check your connection and keep typing to retry.</Text>
       )}
@@ -158,9 +185,10 @@ export default function PostcodeInput({
         <View style={styles.suggestionList}>
           {suggestions.map((s, i) => (
             <TouchableOpacity
-              key={`${s.lat},${s.lng},${i}`}
+              key={s.placeId}
               style={[styles.suggestionRow, i !== suggestions.length - 1 && styles.suggestionRowDivider]}
               onPress={() => selectSuggestion(s)}
+              disabled={resolving}
             >
               <Ionicons name="location-outline" size={15} color={colors.textMuted} />
               <Text style={styles.suggestionText} numberOfLines={2}>

@@ -40,3 +40,8 @@ services:
       # the DIGEST_SECRET repo secret used by .github/workflows/hourly-digest.yml
       - key: DIGEST_SECRET
         sync: false
+      # Google Places API (New) key, restricted to that API only - used for
+      # location autocomplete (see services/places.ts). Never sent to the
+      # mobile client.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false

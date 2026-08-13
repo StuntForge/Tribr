@@ -91,6 +91,8 @@ export interface GroupDetail {
   verifiedOnly: boolean;
   minRating: number | null;
   locationLabel: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
   preferredAgeMin: number | null;
   preferredAgeMax: number | null;
   preferredGender: string | null;
