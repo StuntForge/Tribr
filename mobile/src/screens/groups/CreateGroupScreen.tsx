@@ -511,18 +511,25 @@ function FixedDateTimePicker({
 
   return (
     <View>
-      {!dateString && (
-        <Calendar
-          minDate={toDateString(new Date())}
-          markedDates={markedDates}
-          onDayPress={(day: { dateString: string }) => {
-            onChangeDate(day.dateString);
-            setTimePickerOpen(true);
-          }}
-          theme={calendarTheme}
-          style={styles.calendar}
-        />
-      )}
+      {/* Kept mounted and hidden via style rather than conditionally
+          rendered - react-native-calendars is expensive to tear down and
+          rebuild, and doing that in the same render as opening the time
+          Modal below (both triggered from the same tap) stacked two heavy
+          operations into one frame, which is what showed up as the app
+          "hanging" right after picking a date. */}
+      <Calendar
+        minDate={toDateString(new Date())}
+        markedDates={markedDates}
+        onDayPress={(day: { dateString: string }) => {
+          onChangeDate(day.dateString);
+          // Deferred a tick so the Calendar-hide commits on its own before
+          // the Modal (with its 48-row time FlatList) opens, instead of
+          // both landing in the same frame.
+          setTimeout(() => setTimePickerOpen(true), 0);
+        }}
+        theme={calendarTheme}
+        style={[styles.calendar, dateString ? styles.calendarHidden : undefined]}
+      />
       {dateString && (
         <View style={styles.timeButtonRow}>
           <TouchableOpacity style={[styles.timeButton, styles.timeButtonFlex]} onPress={() => setTimePickerOpen(true)}>
@@ -628,6 +635,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     overflow: "hidden",
   },
+  calendarHidden: { display: "none" },
   timeButtonRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.sm },
   timeButtonFlex: { flex: 1 },
   timeButton: {
