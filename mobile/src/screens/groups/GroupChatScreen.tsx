@@ -14,6 +14,7 @@ export default function GroupChatScreen({ route }: any) {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const listRef = useRef<FlatList>(null);
   const insets = useSafeAreaInsets();
 
@@ -57,14 +58,23 @@ export default function GroupChatScreen({ route }: any) {
     sendMutation.mutate({ text: text.trim() });
   };
 
+  // sendMutation.isPending alone doesn't cover this - it only becomes true
+  // once mutate() is called below, leaving the button tappable for the whole
+  // permission-request + picker + upload span before that, so a second tap
+  // mid-upload could launch the picker again and send two photos.
   const onAddPhoto = async () => {
-    if (sendMutation.isPending) return;
+    if (sendMutation.isPending || uploadingPhoto) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
     if (!result.canceled && result.assets[0]) {
-      const { url } = await uploadPhoto(result.assets[0].uri);
-      sendMutation.mutate({ photoUrl: url });
+      setUploadingPhoto(true);
+      try {
+        const { url } = await uploadPhoto(result.assets[0].uri);
+        sendMutation.mutate({ photoUrl: url });
+      } finally {
+        setUploadingPhoto(false);
+      }
     }
   };
 
@@ -94,13 +104,13 @@ export default function GroupChatScreen({ route }: any) {
       />
       <View style={styles.inputRow}>
         <TouchableOpacity
-          style={[styles.photoButton, sendMutation.isPending && styles.buttonDisabled]}
+          style={[styles.photoButton, (sendMutation.isPending || uploadingPhoto) && styles.buttonDisabled]}
           onPress={onAddPhoto}
-          disabled={sendMutation.isPending}
+          disabled={sendMutation.isPending || uploadingPhoto}
           accessibilityLabel="Attach a photo"
           accessibilityRole="button"
         >
-          <Text style={styles.photoButtonText}>📷</Text>
+          {uploadingPhoto ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.photoButtonText}>📷</Text>}
         </TouchableOpacity>
         <TextInput
           style={styles.input}
