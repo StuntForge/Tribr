@@ -1,13 +1,15 @@
-// Shared OpenStreetMap Nominatim access for the whole backend - used both
-// by this module's own geocodeLabel() (best-effort geocode of a typed
-// profile location) and by routes/geocode.ts (the live search/reverse
-// endpoints proxied to the mobile app). Nominatim's usage policy caps
-// traffic at 1 request/second *for the whole app* (identified by the shared
-// User-Agent below), not per-caller, so every outbound call from anywhere
-// in the backend is serialized through the same queue - two independent
-// unthrottled call sites could together blow the budget and get the
-// User-Agent rate-limited or banned, which would silently break location
-// search/geocoding for every user, not just whoever triggered it.
+// OpenStreetMap Nominatim access, now used only by this module's own
+// geocodeLabel() (best-effort geocode of a typed profile location, called
+// from profile.ts's PUT /me). The live search/resolve endpoints in
+// routes/geocode.ts moved to Google Places this session - see
+// services/places.ts - so this is no longer shared with them. Kept as a
+// narrow fallback rather than removed: geocodeLabel runs unattended off a
+// plain typed label with no session token, so it doesn't fit Places'
+// session-billing model the way the live search flow does.
+// Nominatim's usage policy caps traffic at 1 request/second for the whole
+// app (identified by the shared User-Agent below), so calls are still
+// serialized through this queue even with a single caller - cheap
+// insurance against a future second call site reintroducing the problem.
 const USER_AGENT = "Tribr/1.0 (dev testing; contact via app)";
 const MIN_GAP_MS = 1100;
 let queueTail: Promise<unknown> = Promise.resolve();

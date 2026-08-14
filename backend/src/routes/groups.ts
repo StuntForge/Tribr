@@ -1978,14 +1978,21 @@ async function serializeKickVote(voteId: string) {
 }
 
 router.get("/groups/:id/kick-votes", async (req, res) => {
+  const member = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: req.params.id, userId: req.userId! } } });
+  if (!member || member.status !== "ACTIVE") return res.status(403).json({ error: "Only group members can view this." });
+
   const votes = await prisma.kickVote.findMany({ where: { groupId: req.params.id, outcome: null }, orderBy: { createdAt: "desc" } });
   res.json((await Promise.all(votes.map((v) => serializeKickVote(v.id)))).filter(Boolean));
 });
 
 router.get("/kick-votes/:voteId", async (req, res) => {
-  const vote = await serializeKickVote(req.params.voteId);
+  const vote = await prisma.kickVote.findUnique({ where: { id: req.params.voteId } });
   if (!vote) return res.status(404).json({ error: "Vote not found." });
-  res.json(vote);
+
+  const member = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId: vote.groupId, userId: req.userId! } } });
+  if (!member || member.status !== "ACTIVE") return res.status(403).json({ error: "Only group members can view this." });
+
+  res.json(await serializeKickVote(req.params.voteId));
 });
 
 const kickBallotSchema = z.object({ choice: z.enum(["YES", "NO"]) });
